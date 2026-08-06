@@ -6,14 +6,16 @@
 class QAction;
 class QButtonGroup;
 class QHBoxLayout;
-class QLabel;
 class QStackedWidget;
 class QToolButton;
 class QVBoxLayout;
 
 namespace sweet::ui {
 
-/// A labelled cluster of related commands inside a ribbon page.
+/// A cluster of related commands inside a ribbon page.
+///
+/// `title` is kept for accessibility only; group captions are not shown so the
+/// ribbon stays compact.
 class RibbonGroup : public QWidget
 {
     Q_OBJECT
@@ -24,8 +26,8 @@ public:
     /// Large button: icon above the label. Use for primary commands.
     QToolButton *addAction(QAction *action);
 
-    /// Compact button: icon beside the label. Three fit in the height of one
-    /// large button, which is how secondary commands are packed in.
+    /// Compact button: icon beside the label. Packed in a short column beside
+    /// large buttons.
     QToolButton *addCompactAction(QAction *action);
 
     /// Starts a new column of compact buttons.

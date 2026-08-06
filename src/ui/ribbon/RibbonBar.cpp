@@ -7,7 +7,6 @@
 #include <QEvent>
 #include <QFrame>
 #include <QHBoxLayout>
-#include <QLabel>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPushButton>
@@ -19,9 +18,9 @@
 namespace sweet::ui {
 namespace {
 
-constexpr int largeIconSize = 18;
-constexpr int compactIconSize = 14;
-constexpr int largeButtonWidth = 62;
+constexpr int largeIconSize = 16;
+constexpr int compactIconSize = 13;
+constexpr int largeButtonWidth = 48;
 
 QToolButton *makeButton(QAction *action, bool large)
 {
@@ -37,7 +36,7 @@ QToolButton *makeButton(QAction *action, bool large)
         // Wide enough for the label: a truncated command name is worse than a
         // ribbon that grows by a few pixels.
         const int textWidth = button->fontMetrics().horizontalAdvance(action->text());
-        button->setMinimumWidth(qMax(largeButtonWidth, textWidth + 18));
+        button->setMinimumWidth(qMax(largeButtonWidth, textWidth + 12));
         button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
     } else {
         button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -55,20 +54,14 @@ QToolButton *makeButton(QAction *action, bool large)
 RibbonGroup::RibbonGroup(const QString &title, QWidget *parent)
     : QWidget(parent)
 {
-    auto *column = new QVBoxLayout(this);
-    column->setContentsMargins(4, 2, 4, 1);
-    column->setSpacing(1);
+    // Title stays for accessibility / translators, but is not drawn — a slim
+    // ribbon reads better without "File", "History", … captions under clusters.
+    if (!title.isEmpty())
+        setAccessibleName(title);
 
-    auto *content = new QWidget(this);
-    m_row = new QHBoxLayout(content);
-    m_row->setContentsMargins(0, 0, 0, 0);
-    m_row->setSpacing(2);
-    column->addWidget(content, 1);
-
-    auto *label = new QLabel(title, this);
-    label->setObjectName(QStringLiteral("RibbonGroupTitle"));
-    label->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
-    column->addWidget(label);
+    m_row = new QHBoxLayout(this);
+    m_row->setContentsMargins(2, 1, 2, 1);
+    m_row->setSpacing(1);
 }
 
 QToolButton *RibbonGroup::addAction(QAction *action)
@@ -83,7 +76,7 @@ void RibbonGroup::addCompactColumn()
 {
     m_compactColumn = new QVBoxLayout;
     m_compactColumn->setContentsMargins(0, 0, 0, 0);
-    m_compactColumn->setSpacing(2);
+    m_compactColumn->setSpacing(1);
     m_compactColumn->addStretch(1);
     m_row->addLayout(m_compactColumn);
 }
@@ -105,9 +98,9 @@ void RibbonGroup::addSeparator()
     line->setObjectName(QStringLiteral("RibbonGroupSeparator"));
     line->setFrameShape(QFrame::NoFrame);
     line->setFixedWidth(1);
-    m_row->addSpacing(4);
+    m_row->addSpacing(3);
     m_row->addWidget(line);
-    m_row->addSpacing(4);
+    m_row->addSpacing(3);
 }
 
 void RibbonGroup::addWidget(QWidget *widget)
@@ -139,7 +132,7 @@ RibbonPage::RibbonPage(QWidget *parent)
     auto *content = new QWidget(scroll);
     content->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
     m_row = new QHBoxLayout(content);
-    m_row->setContentsMargins(6, 2, 6, 2);
+    m_row->setContentsMargins(4, 1, 4, 1);
     m_row->setSpacing(0);
 
     // The trailing stretch is created up front and everything is inserted before
@@ -190,8 +183,8 @@ RibbonBar::RibbonBar(QWidget *parent)
     auto *tabStrip = new QWidget(this);
     tabStrip->setObjectName(QStringLiteral("RibbonTabStrip"));
     auto *stripLayout = new QHBoxLayout(tabStrip);
-    stripLayout->setContentsMargins(8, 3, 8, 0);
-    stripLayout->setSpacing(4);
+    stripLayout->setContentsMargins(6, 2, 6, 0);
+    stripLayout->setSpacing(2);
     column->addWidget(tabStrip);
 
     // Three slots: the application menu on the left, the tabs, and the

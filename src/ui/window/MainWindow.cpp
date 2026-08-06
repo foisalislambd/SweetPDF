@@ -674,7 +674,7 @@ void MainWindow::createAppMenu()
     menuButton->setText(tr("Menu"));
     menuButton->setToolTip(tr("Application menu"));
     menuButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    menuButton->setIconSize(QSize(18, 18));
+    menuButton->setIconSize(QSize(16, 16));
     menuButton->setPopupMode(QToolButton::InstantPopup);
     menuButton->setMenu(m_appMenu);
     m_ribbon->addTabStripLeadingWidget(menuButton);
