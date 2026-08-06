@@ -1,8 +1,6 @@
-<div align="center">
-  <img src="resources/icons/org.sweetpdf.SweetPDF.png" width="96" alt="SweetPDF">
-  <h1>SweetPDF</h1>
-  <p><strong>An all-in-one, open source PDF editor for Linux, Windows and macOS.</strong></p>
-</div>
+# SweetPDF
+
+**An all-in-one, open source PDF editor for Linux, Windows and macOS.**
 
 Written in C++20 with Qt 6 and MuPDF, aiming to be a genuine alternative to
 Acrobat rather than another read-only viewer. Everything happens on your own
@@ -13,7 +11,7 @@ computer: no account, no upload, no subscription.
 > all work. Editing existing text is done by replacing it (the old glyphs are
 > redacted away and retyped) rather than by re-flowing the original text.
 
-![The SweetPDF home screen](docs/screenshots/home.png)
+The SweetPDF home screen
 
 ## Contents
 
@@ -36,12 +34,14 @@ Grab the newest build from the [releases
 page](https://github.com/sweetpdf/sweetpdf/releases). Every release lists a
 `SHA256SUMS` file if you want to check your download.
 
-| System | File | What to do |
-| --- | --- | --- |
-| Ubuntu 26.04+, Debian 14+ | `sweetpdf_<version>_amd64.deb` | `sudo apt install ./sweetpdf_*.deb` |
-| Other Linux | `sweetpdf-<version>-linux-x86_64.tar.gz` | Unpack it and run `bin/sweetpdf`. Needs Qt 6.4+, MuPDF and Tesseract from your distribution. |
-| Windows 10/11 | `sweetpdf-<version>-windows-x86_64.zip` | Unpack anywhere and run `sweetpdf.exe`. Nothing is installed, so the folder can live on a USB stick. |
-| macOS | — | Not built yet, see [Releases and CI](#releases-and-ci). Build from source in the meantime. |
+
+| System                    | File                                     | What to do                                                                                           |
+| ------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Ubuntu 26.04+, Debian 14+ | `sweetpdf_<version>_amd64.deb`           | `sudo apt install ./sweetpdf_*.deb`                                                                  |
+| Other Linux               | `sweetpdf-<version>-linux-x86_64.tar.gz` | Unpack it and run `bin/sweetpdf`. Needs Qt 6.4+, MuPDF and Tesseract from your distribution.         |
+| Windows 10/11             | `sweetpdf-<version>-windows-x86_64.zip`  | Unpack anywhere and run `sweetpdf.exe`. Nothing is installed, so the folder can live on a USB stick. |
+| macOS                     | —                                        | Not built yet, see [Releases and CI](#releases-and-ci). Build from source in the meantime.           |
+
 
 There is no telemetry and no auto-updater. To upgrade, install the newer package
 over the old one, or replace the unpacked folder.
@@ -49,54 +49,62 @@ over the old one, or replace the unpacked folder.
 ## First five minutes
 
 1. **Open a document.** Press the blue *Open PDF* button, pick a task tile, or
-   drag a file onto the window. Anything you have opened before is one click away
+  drag a file onto the window. Anything you have opened before is one click away
    in the *Recent* list.
 2. **Move around.** Scroll normally, `Ctrl+Wheel` to zoom, or type a page number
-   in the status bar. `Ctrl+1` fits the page, `Ctrl+2` fits the width.
+  in the status bar. `Ctrl+1` fits the page, `Ctrl+2` fits the width.
 3. **Find something.** `Ctrl+F`, type, and every match in the document is
-   highlighted. `F3` walks through them.
+  highlighted. `F3` walks through them.
 4. **Mark it up.** On the *Comment* tab pick Highlight, then drag across text.
-   Colour and opacity next to the tools apply to what you draw next.
+  Colour and opacity next to the tools apply to what you draw next.
 5. **Undo freely.** `Ctrl+Z` reverses anything, including page moves. Nothing
-   touches the file on disk until you press `Ctrl+S`.
+  touches the file on disk until you press `Ctrl+S`.
 
 Nothing you do is destructive until you save, so the fastest way to learn the
 program is to open a copy of something and try the tools.
 
 ## The window
 
-![The document view](docs/screenshots/viewer-light.png)
+The document view
 
-| Part | What it is for |
-| --- | --- |
-| **Home screen** | Shown when no document is open: task tiles, recent files, and this guide in short form. The ribbon and panels are hidden here because they cannot do anything yet. |
-| **Ribbon** | Commands grouped by job: *Home*, *Edit*, *Comment*, *Page*, *View*, *Protect*, *Tools*. The *Menu* button on the left holds the file commands, recent files, preferences and help. |
-| **Navigation panel** (left, `Ctrl+B`) | Six panels: *Pages* (thumbnails), *Marks* (bookmarks), *Notes* (comments), *Forms*, *Files* (attachments) and *Layers*. |
-| **Page canvas** | The document. A small floating bar carries the select and pan tools, zoom, and the page layout modes. |
-| **Properties panel** (right, `Ctrl+J`) | Title, author, producer, page size, file size, encryption and what the document permits. |
-| **Status bar** | Page number, zoom, layout and theme, with the page field ready for typing. |
-| **Tabs** | Several documents at once. With session restore on, they come back next time. |
+
+| Part                                   | What it is for                                                                                                                                                                     |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Home screen**                        | Shown when no document is open: task tiles, recent files, and this guide in short form. The ribbon and panels are hidden here because they cannot do anything yet.                 |
+| **Ribbon**                             | Commands grouped by job: *Home*, *Edit*, *Comment*, *Page*, *View*, *Protect*, *Tools*. The *Menu* button on the left holds the file commands, recent files, preferences and help. |
+| **Navigation panel** (left, `Ctrl+B`)  | Six panels: *Pages* (thumbnails), *Marks* (bookmarks), *Notes* (comments), *Forms*, *Files* (attachments) and *Layers*.                                                            |
+| **Page canvas**                        | The document. A small floating bar carries the select and pan tools, zoom, and the page layout modes.                                                                              |
+| **Properties panel** (right, `Ctrl+J`) | Title, author, producer, page size, file size, encryption and what the document permits.                                                                                           |
+| **Status bar**                         | Page number, zoom, layout and theme, with the page field ready for typing.                                                                                                         |
+| **Tabs**                               | Several documents at once. With session restore on, they come back next time.                                                                                                      |
+
+
+
 
 ## How do I…
+
+
 
 ### Read and search
 
 - **Change layout** — *View* tab: single page, continuous or two-page, plus
-  rotate-view which turns the display without changing the file.
+rotate-view which turns the display without changing the file.
 - **Search** — `Ctrl+F`. The find bar can match whole words only or respect
-  case; results are highlighted everywhere at once, not one at a time.
+case; results are highlighted everywhere at once, not one at a time.
 - **Copy text** — drag with the select tool (`V`), then `Ctrl+C`. Selection
-  snaps to words and lines, so table columns copy cleanly.
+snaps to words and lines, so table columns copy cleanly.
 - **Follow a link** — click it. Right-click a link to remove it.
+
+
 
 ### Comment and mark up
 
 - **Highlight, underline, strike out** — pick the tool on the *Comment* tab and
-  drag across text. Set the colour and opacity before you draw.
+drag across text. Set the colour and opacity before you draw.
 - **Draw or write** — *Draw* for freehand ink, *Note* for a sticky note, *Text*
-  for a box of typed text, plus rectangles and ellipses.
+for a box of typed text, plus rectangles and ellipses.
 - **Review everything** — the *Notes* panel lists every annotation with its page
-  and author; clicking one scrolls to it. `Delete` removes the selected one.
+and author; clicking one scrolls to it. `Delete` removes the selected one.
 
 Every mark is a real PDF annotation, so other viewers see them too.
 
@@ -107,9 +115,9 @@ Open the *Pages* panel or the *Page* tab, then:
 - **Reorder** — drag thumbnails.
 - **Insert** — a blank page, or pages from another file.
 - **Delete, rotate, extract** — select thumbnails first; extract writes the
-  selection to a new document. Right-click a thumbnail to duplicate it.
+selection to a new document. Right-click a thumbnail to duplicate it.
 - **Merge** — *Combine files* on the home screen, or *Merge* on the *Page* tab,
-  appends other documents to this one.
+appends other documents to this one.
 - **Split** — cut the document into several files at a page range you choose.
 
 Page operations are undoable like everything else.
@@ -117,23 +125,25 @@ Page operations are undoable like everything else.
 ### Edit content
 
 - **Replace text** — select the words, then *Replace Text* on the *Edit* tab.
-  The originals are redacted away and your text is placed on top, so the old
-  words are really gone rather than covered up.
+The originals are redacted away and your text is placed on top, so the old
+words are really gone rather than covered up.
 - **Add or swap a picture** — *Add Image*, then drag the box where it should go.
-  *Replace Image* swaps a picture you placed earlier.
+*Replace Image* swaps a picture you placed earlier.
 - **Add a link** — *Link*, drag a box, and give it a URL or a page number.
+
+
 
 ### Fill in a form, and sign
 
 - **Fill** — open the *Forms* panel. Every field is listed page by page with the
-  right editor: text boxes, checkboxes, dropdowns. Values go straight into the
-  document, and each change is one undo step.
+right editor: text boxes, checkboxes, dropdowns. Values go straight into the
+document, and each change is one undo step.
 - **Reset** — *Reset form* in the panel puts every field back to its default.
 - **Sign** — *Sign* on the *Protect* tab. Draw with the mouse, type your name in a
-  handwriting style, or import a photo of your signature; then drag a box where
-  it goes, or apply it to every page.
+handwriting style, or import a photo of your signature; then drag a box where
+it goes, or apply it to every page.
 - **Freeze it** — *Flatten* on the *Tools* tab turns fields and annotations into
-  ordinary page content so nobody can change them.
+ordinary page content so nobody can change them.
 
 Cryptographic (PKCS#7) signatures are not implemented yet — see the
 [roadmap](#roadmap).
@@ -141,55 +151,67 @@ Cryptographic (PKCS#7) signatures are not implemented yet — see the
 ### Protect a document
 
 - **Encrypt** — *Protect* tab: AES-128 or AES-256, an open password and an owner
-  password, and a tick list of what is still allowed (printing, copying,
-  commenting, filling forms, assembling).
+password, and a tick list of what is still allowed (printing, copying,
+commenting, filling forms, assembling).
 - **Redact** — mark regions with the redaction tool, then *Apply Redactions*.
-  The content underneath is removed from the file, not hidden.
+The content underneath is removed from the file, not hidden.
 - **Watermark** — text or an image, with rotation, opacity and a page range.
+
+
 
 ### Convert and export
 
 - **Make a scan searchable** — *OCR* on the *Tools* tab runs Tesseract and adds
-  an invisible text layer, so the scan can be searched and copied.
+an invisible text layer, so the scan can be searched and copied.
 - **Export** — pages as PNG or JPEG at a resolution you pick, the text as plain
-  text, or the document as HTML.
+text, or the document as HTML.
 - **Print** — `Ctrl+P`, with the usual page range and printer options.
 - **Compress** — rewrites the file with tighter object streams.
 
+
+
 ## Keyboard shortcuts
 
-| Action | Shortcut |
-| --- | --- |
-| Open | `Ctrl+O` |
-| Save / save as | `Ctrl+S` / `Ctrl+Shift+S` |
-| Print | `Ctrl+P` |
-| Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
-| Find / next / previous | `Ctrl+F` / `F3` / `Shift+F3` |
-| Copy / select all | `Ctrl+C` / `Ctrl+A` |
-| Delete selected comment | `Delete` |
-| Cancel placement or selection | `Esc` |
-| Close document | `Ctrl+W` |
-| Zoom in / out | `Ctrl++` / `Ctrl+-` |
-| Actual size | `Ctrl+0` |
-| Fit page / fit width | `Ctrl+1` / `Ctrl+2` |
-| Select / pan tool | `V` / `H` |
-| Navigation panel | `Ctrl+B` |
-| Properties panel | `Ctrl+J` |
-| Zoom with the wheel | `Ctrl+Wheel` |
-| Pan temporarily | Middle mouse drag |
+
+| Action                        | Shortcut                     |
+| ----------------------------- | ---------------------------- |
+| Open                          | `Ctrl+O`                     |
+| Save / save as                | `Ctrl+S` / `Ctrl+Shift+S`    |
+| Print                         | `Ctrl+P`                     |
+| Undo / redo                   | `Ctrl+Z` / `Ctrl+Shift+Z`    |
+| Find / next / previous        | `Ctrl+F` / `F3` / `Shift+F3` |
+| Copy / select all             | `Ctrl+C` / `Ctrl+A`          |
+| Delete selected comment       | `Delete`                     |
+| Cancel placement or selection | `Esc`                        |
+| Close document                | `Ctrl+W`                     |
+| Zoom in / out                 | `Ctrl++` / `Ctrl+-`          |
+| Actual size                   | `Ctrl+0`                     |
+| Fit page / fit width          | `Ctrl+1` / `Ctrl+2`          |
+| Select / pan tool             | `V` / `H`                    |
+| Navigation panel              | `Ctrl+B`                     |
+| Properties panel              | `Ctrl+J`                     |
+| Zoom with the wheel           | `Ctrl+Wheel`                 |
+| Pan temporarily               | Middle mouse drag            |
+
+
+
 
 ## Settings
 
 *Menu → Settings*, also on the *Tools* tab and the home screen, keeps the handful
 of preferences that change how the program behaves:
 
-| Setting | What it does |
-| --- | --- |
-| Author name | The name written on annotations and comments you create. |
-| Dark mode | Switches the theme. Also on the home screen and in the status bar. |
-| Default zoom | Fit width, fit page or actual size for newly opened documents. |
-| Restore session | Reopens the documents that were open when you last quit. |
+
+| Setting          | What it does                                                                                                                   |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Author name      | The name written on annotations and comments you create.                                                                       |
+| Dark mode        | Switches the theme. Also on the home screen and in the status bar.                                                             |
+| Default zoom     | Fit width, fit page or actual size for newly opened documents.                                                                 |
+| Restore session  | Reopens the documents that were open when you last quit.                                                                       |
 | Incremental save | Appends changes to the end of the file, which is much faster on large documents. Turn it off to always rewrite the whole file. |
+
+
+
 
 ## Common questions
 
@@ -216,6 +238,8 @@ on macOS. Recent files and window layout live there too.
 
 ## Build from source
 
+
+
 ### Linux (Ubuntu 26.04 or newer, Debian 14 or newer)
 
 ```bash
@@ -241,6 +265,8 @@ sudo dnf install gcc-c++ cmake ninja-build qt6-qtbase-devel qt6-qtsvg-devel \
   mupdf-devel tesseract-devel leptonica-devel sqlite-devel
 ```
 
+
+
 ### Windows (MSYS2)
 
 ```bash
@@ -250,6 +276,8 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
+
+
 ### macOS
 
 ```bash
@@ -258,13 +286,17 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
+
+
 ### Build options
 
-| Option | Default | Effect |
-| --- | --- | --- |
-| `SWEETPDF_ENABLE_OCR` | `ON` | Build Tesseract-backed OCR. Turns itself off if Tesseract is missing. |
-| `SWEETPDF_WARNINGS_AS_ERRORS` | `OFF` | Fail the build on any warning. Used in CI. |
-| `SWEETPDF_VERSION` | `0.0.0` | Version shown in the app and used in package names. Set by the release workflow. |
+
+| Option                        | Default | Effect                                                                           |
+| ----------------------------- | ------- | -------------------------------------------------------------------------------- |
+| `SWEETPDF_ENABLE_OCR`         | `ON`    | Build Tesseract-backed OCR. Turns itself off if Tesseract is missing.            |
+| `SWEETPDF_WARNINGS_AS_ERRORS` | `OFF`   | Fail the build on any warning. Used in CI.                                       |
+| `SWEETPDF_VERSION`            | `0.0.0` | Version shown in the app and used in package names. Set by the release workflow. |
+
 
 Tests need Ghostscript, which turns the checked-in PostScript into a sample
 document; without it they are skipped. Run them with `ctest --test-dir build`.
@@ -309,14 +341,16 @@ undone by restoring the document exactly as it was.
 
 ## Why these libraries
 
-| Concern | Choice | Reason |
-| --- | --- | --- |
-| UI | Qt 6 Widgets | A ribbon, dock panels and a canvas with hundreds of items stay fast and feel native; QML would add a runtime and buy little for a dense desktop tool. |
-| Render, text, annotations | MuPDF | One C API that covers rasterising, structured text extraction, annotations and redaction, and it is genuinely fast. |
-| Structural operations | QPDF | Merge, split, encrypt, linearise and repair at the object level, which is where MuPDF is weakest. Apache-2.0. |
-| OCR | Tesseract + Leptonica | The only serious open source engine, with per-word bounding boxes for an invisible text layer. |
-| Local state | SQLite | Recent files, per-document session state and annotation drafts. |
-| Build | CMake + Ninja | One build description for all three platforms. |
+
+| Concern                   | Choice                | Reason                                                                                                                                                |
+| ------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| UI                        | Qt 6 Widgets          | A ribbon, dock panels and a canvas with hundreds of items stay fast and feel native; QML would add a runtime and buy little for a dense desktop tool. |
+| Render, text, annotations | MuPDF                 | One C API that covers rasterising, structured text extraction, annotations and redaction, and it is genuinely fast.                                   |
+| Structural operations     | QPDF                  | Merge, split, encrypt, linearise and repair at the object level, which is where MuPDF is weakest. Apache-2.0.                                         |
+| OCR                       | Tesseract + Leptonica | The only serious open source engine, with per-word bounding boxes for an invisible text layer.                                                        |
+| Local state               | SQLite                | Recent files, per-document session state and annotation drafts.                                                                                       |
+| Build                     | CMake + Ninja         | One build description for all three platforms.                                                                                                        |
+
 
 MuPDF is AGPL-3.0, so SweetPDF is AGPL-3.0 as well.
 
@@ -342,36 +376,38 @@ src/
 resources/        Application icon
 ```
 
-Each module has its own guide: [`src/core/README.md`](src/core/README.md) and
-[`src/ui/README.md`](src/ui/README.md) explain what belongs in each folder, the
+Each module has its own guide: `[src/core/README.md](src/core/README.md)` and
+`[src/ui/README.md](src/ui/README.md)` explain what belongs in each folder, the
 rules that keep the boundaries intact, and how a page reaches the screen.
 
 The rules that keep this honest:
 
 - `core` never includes a widget header, so the document model stays testable
-  and reusable by a future CLI.
+and reusable by a future CLI.
 - Pages are rasterised on a worker pool, never on the GUI thread. Each thread
-  owns a cloned MuPDF context; the base context installs locks so one document
-  can serve several threads.
+owns a cloned MuPDF context; the base context installs locks so one document
+can serve several threads.
 - Bitmaps are cached by (page, quantised scale, rotation) under a memory budget,
-  and thumbnails share that cache at the lowest priority.
+and thumbnails share that cache at the lowest priority.
 - Scene coordinates are PDF points, so zooming is only a view transform and
-  annotations added later need no second coordinate system.
+annotations added later need no second coordinate system.
 - All state for one open document lives in a `DocumentSession`: document, render
-  queue, undo stack, zoom, rotation, current page and active tool. Widgets read
-  from it and never keep their own copy, so the canvas, thumbnails and inspector
-  cannot disagree.
+queue, undo stack, zoom, rotation, current page and active tool. Widgets read
+from it and never keep their own copy, so the canvas, thumbnails and inspector
+cannot disagree.
+
+
 
 ## Releases and CI
 
 Two workflows drive everything under `.github/workflows`:
 
 - **CI** (`ci.yml`) runs on pull requests and on pushes to any branch except
-  `main`. It builds and tests every platform with warnings promoted to errors,
-  and publishes nothing.
+`main`. It builds and tests every platform with warnings promoted to errors,
+and publishes nothing.
 - **Release** (`release.yml`) runs on every push to `main` (documentation-only
-  commits are ignored) and can be started by hand from the Actions tab, with an
-  optional explicit version.
+commits are ignored) and can be started by hand from the Actions tab, with an
+optional explicit version.
 
 A release run works out the version first, then builds and tests all platforms,
 and only creates the tag and the GitHub release when every platform succeeded.
@@ -406,10 +442,12 @@ want `.dmg` builds.
 7. **Protection** — encryption, permissions, true redaction, watermarks. *Done.*
 8. **Export** — images, plain text, HTML, printing, compression. *Done.*
 9. **Real text editing** — re-flow existing text runs with their original fonts,
-   instead of replacing them with a text box.
+  instead of replacing them with a text box.
 10. **Cryptographic signatures** — PKCS#7 signing and validation of signature fields.
 11. **Conversion** — Office formats, in and out.
 12. **Attachments and layers** — the two sidebar panels that are still placeholders.
+
+
 
 ## Contributing
 
@@ -420,9 +458,9 @@ dependencies, build with `SWEETPDF_WARNINGS_AS_ERRORS=ON`, make document changes
 undoable, and match the surrounding style.
 
 - Found a bug? [Report it](https://github.com/sweetpdf/sweetpdf/issues/new/choose)
-  — please attach the document if you can share it.
+— please attach the document if you can share it.
 - Found a security problem? Follow the [security policy](SECURITY.md) and report
-  it privately rather than in an issue.
+it privately rather than in an issue.
 - Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 - Notable changes are recorded in the [changelog](CHANGELOG.md).
 
