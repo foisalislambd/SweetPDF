@@ -70,6 +70,7 @@ jobs:
             libmupdf-dev libfreetype-dev libharfbuzz-dev libjpeg-dev \
             libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libmujs-dev \
             zlib1g-dev libsqlite3-dev libtesseract-dev libleptonica-dev \
+            tesseract-ocr-eng \
             libgl1-mesa-dev libxkbcommon-dev ghostscript
 
       - name: Install the MSYS2 toolchain and libraries
@@ -86,7 +87,7 @@ jobs:
           pacboy: >-
             toolchain:p cmake:p ninja:p pkgconf:p gdb:p nsis:p
             qt6-base:p qt6-svg:p qt6-tools:p
-            libmupdf:p sqlite3:p tesseract-ocr:p ghostscript:p
+            libmupdf:p sqlite3:p tesseract-ocr:p tesseract-data-eng:p ghostscript:p
 
       - name: Configure
         run: |

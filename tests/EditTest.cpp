@@ -270,17 +270,26 @@ int main(int argc, char *argv[])
         {
             auto document = PdfDocument::open(source);
             const QString tessdata = exporter::defaultTessdataDir();
-            check(!tessdata.isEmpty(), "Tesseract language data is installed");
-            check(exporter::installedOcrLanguages(tessdata).contains(QStringLiteral("eng")),
-                  "the English language pack is available");
+            const bool hasEng =
+                !tessdata.isEmpty()
+                && exporter::installedOcrLanguages(tessdata).contains(QStringLiteral("eng"));
+            // Language packs are a runtime dependency, not a build one. Skip when
+            // they are missing so a machine without tesseract-ocr-eng can still
+            // run the rest of the suite; CI installs the eng pack so this path
+            // is covered there.
+            if (!hasEng) {
+                std::printf("  skip  OCR (install tesseract-ocr-eng / tesseract-data-eng)\n");
+            } else {
+                const QString searchable =
+                    QDir(workDir).filePath(QStringLiteral("searchable.pdf"));
+                exporter::toSearchablePdf(*document, searchable, QStringLiteral("eng"), tessdata,
+                                          150);
+                check(QFileInfo(searchable).size() > 1000, "OCR writes a searchable PDF");
 
-            const QString searchable = QDir(workDir).filePath(QStringLiteral("searchable.pdf"));
-            exporter::toSearchablePdf(*document, searchable, QStringLiteral("eng"), tessdata, 150);
-            check(QFileInfo(searchable).size() > 1000, "OCR writes a searchable PDF");
-
-            auto reopened = PdfDocument::open(searchable);
-            const QString text = exporter::documentText(*reopened);
-            check(!text.trimmed().isEmpty(), "the OCR PDF has a selectable text layer");
+                auto reopened = PdfDocument::open(searchable);
+                const QString text = exporter::documentText(*reopened);
+                check(!text.trimmed().isEmpty(), "the OCR PDF has a selectable text layer");
+            }
         }
 
         // --- Pictures and links -------------------------------------------
