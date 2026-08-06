@@ -39,6 +39,15 @@ qt_add_library(sweetpdf_ui STATIC
 
 target_include_directories(sweetpdf_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 
+# The brand mark is a real file rather than generated iconography: the home
+# screen, the window icon and the desktop entry all need the same artwork. It
+# lives with the UI so tests and tools that link only this library still show it.
+qt_add_resources(sweetpdf_ui "sweetpdf_assets"
+    PREFIX "/"
+    BASE "${CMAKE_SOURCE_DIR}/resources"
+    FILES "${CMAKE_SOURCE_DIR}/resources/icons/org.sweetpdf.SweetPDF.png"
+)
+
 target_link_libraries(sweetpdf_ui
     PUBLIC  sweetpdf_core Qt6::Widgets
     PRIVATE Qt6::Svg Qt6::PrintSupport sweetpdf_warnings

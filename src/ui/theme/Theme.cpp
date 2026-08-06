@@ -477,12 +477,24 @@ QStatusBar QLabel { color: {textMuted}; font-size: {fontCaption}pt; }
 }
 #PageCanvas { background: {canvas}; border: none; }
 
-#WelcomeCard {
+/* --- Home screen ------------------------------------------------------- */
+#WelcomePanel {
+    background: {surface}; border: 1px solid {border}; border-radius: 14px;
+}
+#WelcomeCard, #WelcomeTile {
     background: {surface}; border: 1px solid {border}; border-radius: 12px;
 }
-#WelcomeCard:hover { border-color: {accent}; background: {accentSoft}; }
+#WelcomeCard:hover, #WelcomeTile:hover { border-color: {accent}; background: {accentSoft}; }
 #WelcomeDropZone {
     border: 2px dashed {borderStrong}; border-radius: 14px; background: transparent;
+}
+#VersionBadge {
+    background: {accentSoft}; border-radius: 8px; padding: 2px 8px; font-weight: 600;
+}
+#StepBadge { background: {accent}; border-radius: 10px; font-weight: 600; }
+#KeyChip {
+    background: {surfaceAlt}; border: 1px solid {border}; border-radius: 5px;
+    padding: 1px 6px; font-weight: 600;
 }
 
 QSplitter::handle { background: {border}; width: 1px; height: 1px; }

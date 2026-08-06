@@ -93,6 +93,7 @@ MainWindow::MainWindow(QWidget *parent)
     createRibbon();
     createAppMenu();
     createStatusBar();
+    showWelcomeIfEmpty();
 
     connect(&Theme::instance(), &Theme::changed, this, [this] {
         for (QAction *entry : std::as_const(m_actions)) {
@@ -853,6 +854,8 @@ void MainWindow::createCentralArea()
         settings.remove(QLatin1String(recentFilesKey));
         rebuildRecentMenu();
     });
+    connect(m_welcome, &WelcomeView::forgetRequested, this, &MainWindow::forgetRecentFile);
+    connect(m_welcome, &WelcomeView::toolRequested, this, &MainWindow::runHomeTask);
 
     m_properties = new PropertiesPanel(m_splitter);
     m_splitter->addWidget(m_properties);
@@ -1104,7 +1107,7 @@ bool MainWindow::openFile(const QString &path)
     m_tabs->tabBar()->setTabButton(index, QTabBar::RightSide, closeButton);
 
     m_tabs->setCurrentIndex(index);
-    m_center->setCurrentWidget(m_tabs);
+    showWelcomeIfEmpty();
 
     connect(session, &core::DocumentSession::modifiedChanged, this, [this, session](bool dirty) {
         for (int tab = 0; tab < m_tabs->count(); ++tab) {
@@ -1149,7 +1152,60 @@ void MainWindow::closeCurrentDocument()
 
 void MainWindow::showWelcomeIfEmpty()
 {
-    m_center->setCurrentWidget(m_tabs->count() == 0 ? m_welcome : static_cast<QWidget *>(m_tabs));
+    const bool empty = m_tabs->count() == 0;
+    m_center->setCurrentWidget(empty ? m_welcome : static_cast<QWidget *>(m_tabs));
+
+    // None of the chrome can do anything without a document, and an empty ribbon
+    // over an empty sidebar is the least welcoming thing a window can show. The
+    // home screen therefore gets the window to itself.
+    if (m_ribbon)
+        m_ribbon->setVisible(!empty);
+    m_sidebar->setVisible(!empty);
+    m_properties->setVisible(!empty);
+    statusBar()->setVisible(!empty);
+}
+
+void MainWindow::runHomeTask(const QString &taskId)
+{
+    // A couple of tasks are window-level and work with nothing open.
+    if (taskId == QLatin1String("settings") || taskId == QLatin1String("toggleTheme")) {
+        if (QAction *command = action(taskId))
+            command->trigger();
+        return;
+    }
+
+    // The rest need a document, so ask for one and then hand over to the same
+    // command the ribbon would have used. That way a tile is a complete flow
+    // rather than a dead end.
+    if (m_tabs->count() == 0) {
+        const QString path = QFileDialog::getOpenFileName(
+            this, tr("Choose a document"), QString(),
+            tr("Documents (*.pdf *.xps *.epub *.cbz *.svg);;PDF files (*.pdf);;All files (*)"));
+        if (path.isEmpty() || !openFile(path))
+            return;
+    }
+
+    // "organise" is a panel rather than a command.
+    if (taskId == QLatin1String("organise")) {
+        m_sidebar->setPanelVisible(true);
+        m_sidebar->showPanel(Sidebar::Panel::Pages);
+        report(tr("Drag thumbnails to reorder pages, or use the Page tab for more."));
+        return;
+    }
+
+    if (QAction *command = action(taskId); command && command->isEnabled())
+        command->trigger();
+}
+
+void MainWindow::forgetRecentFile(const QString &path)
+{
+    QStringList files = recentFiles();
+    if (files.removeAll(path) == 0)
+        return;
+
+    QSettings settings;
+    settings.setValue(QLatin1String(recentFilesKey), files);
+    rebuildRecentMenu();
 }
 
 void MainWindow::connectSessionSignals()

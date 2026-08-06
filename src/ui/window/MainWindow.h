@@ -49,6 +49,11 @@ public Q_SLOTS:
     void openFileDialog();
     void closeCurrentDocument();
 
+    /// Runs one of the tasks offered by the home screen. `taskId` is an action id,
+    /// or "organise" for the page panel. Asks for a document first when none is
+    /// open, so a tile is a complete flow rather than a dead end.
+    void runHomeTask(const QString &taskId);
+
     // --- File ------------------------------------------------------------
     bool saveDocument();
     bool saveDocumentAs(bool asCopy = false);
@@ -133,6 +138,7 @@ private:
     QAction *action(const QString &id) const;
 
     void addRecentFile(const QString &path);
+    void forgetRecentFile(const QString &path);
     void rebuildRecentMenu();
     QStringList recentFiles() const;
 

@@ -16,7 +16,7 @@ int main(int argc, char *argv[])
     QApplication::setOrganizationDomain(QStringLiteral("sweetpdf.org"));
     QApplication::setDesktopFileName(QStringLiteral("org.sweetpdf.SweetPDF"));
     QApplication::setWindowIcon(
-        QIcon(QStringLiteral(":/icons/org.sweetpdf.SweetPDF.svg")));
+        QIcon(QStringLiteral(":/icons/org.sweetpdf.SweetPDF.png")));
 
     // Fusion is the one style available on every platform, which keeps the
     // stylesheet predictable instead of fighting each platform's native style.
