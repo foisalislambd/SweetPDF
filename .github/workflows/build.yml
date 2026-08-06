@@ -82,8 +82,9 @@ jobs:
           # document, without it the test suite has nothing to open.
           install: >-
             zip
+          # gdb is only used to turn a crashing test into a backtrace.
           pacboy: >-
-            toolchain:p cmake:p ninja:p pkgconf:p
+            toolchain:p cmake:p ninja:p pkgconf:p gdb:p
             qt6-base:p qt6-svg:p qt6-tools:p
             libmupdf:p sqlite3:p tesseract-ocr:p ghostscript:p
 
@@ -102,6 +103,21 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ctest --test-dir build --output-on-failure
+
+      # A crash inside a test tells us nothing on its own, and the interesting
+      # ones have only ever appeared on this runner. Re-run the smoke test under
+      # gdb so the log carries a backtrace instead of just "SegFault".
+      - name: Backtrace the failing test
+        if: failure() && runner.os == 'Windows'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          gdb --batch --nx \
+            -ex 'set confirm off' \
+            -ex run \
+            -ex 'echo \n--- backtrace ---\n' \
+            -ex 'thread apply all backtrace full' \
+            --args ./build/bin/sweetpdf_smoke.exe build/tests/sample.pdf || true
 
       - name: Package for Linux
         if: inputs.package && runner.os == 'Linux'

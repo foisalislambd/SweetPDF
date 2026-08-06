@@ -152,8 +152,12 @@ Theme::Theme()
 
 Theme &Theme::instance()
 {
-    static Theme theme;
-    return theme;
+    // Deliberately never destroyed. A QObject must not outlive QApplication, and
+    // a function-local static object would be destroyed after it, once the
+    // platform plugin and the application's thread data are already gone. The
+    // pixmaps it caches are freed while the GUI is still up; see the constructor.
+    static Theme *theme = new Theme;
+    return *theme;
 }
 
 QString Theme::resolveFontFamily()

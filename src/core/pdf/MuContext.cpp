@@ -9,10 +9,13 @@
 namespace sweet::core {
 namespace {
 
+/// The locks MuPDF takes on our behalf. Never destroyed, for the same reason as
+/// the base context: a thread releasing its clone as the process exits still
+/// locks these, and static destruction order gives no say in who goes first.
 std::array<std::mutex, FZ_LOCK_MAX> &lockPool()
 {
-    static std::array<std::mutex, FZ_LOCK_MAX> pool;
-    return pool;
+    static auto *pool = new std::array<std::mutex, FZ_LOCK_MAX>;
+    return *pool;
 }
 
 void lockMutex(void *, int which)
@@ -70,18 +73,20 @@ MuContext::MuContext()
         throw MuError(QStringLiteral("Could not register MuPDF document handlers"));
 }
 
-MuContext::~MuContext()
-{
-    if (m_base) {
-        fz_drop_context(m_base);
-        m_base = nullptr;
-    }
-}
+/// Runs only if something other than instance() ever owns a context, which today
+/// nothing does. The base is not dropped even then: see instance().
+MuContext::~MuContext() = default;
 
 MuContext &MuContext::instance()
 {
-    static MuContext ctx;
-    return ctx;
+    // Deliberately never destroyed, so the base context lives for the whole
+    // process. Every rendering thread holds a clone of it and releases that clone
+    // from thread-local teardown, which is not ordered against static
+    // destruction - on Windows least of all. Outliving them all means a clone is
+    // always released against a live base, and freeing MuPDF's store moments
+    // before the process exits buys nothing.
+    static MuContext *ctx = new MuContext;
+    return *ctx;
 }
 
 fz_context *MuContext::forThread()
