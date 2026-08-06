@@ -84,37 +84,45 @@ int main(int argc, char *argv[])
         sweet::ui::Theme::instance().setMode(sweet::ui::ThemeMode::Dark);
     sweet::ui::Theme::instance().apply();
 
-    sweet::ui::MainWindow window;
-    window.resize(1440, 900);
-    window.show();
-    spin(200);
+    int status = 0;
 
-    // The welcome screen is a screen like any other, so it can be reviewed the
-    // same way instead of only being seen on a fresh install.
-    if (arguments.contains(QStringLiteral("--welcome"))) {
-        if (!screenshotPath.isEmpty()) {
-            const QPixmap shot = window.grab();
-            if (shot.isNull() || !shot.save(screenshotPath))
-                return fail("could not save the screenshot");
-            std::printf("smoke: welcome screenshot written to %s\n",
-                        qUtf8Printable(screenshotPath));
+    // Scoped so the window is destroyed while QApplication is still alive, which
+    // is the only order the widgets support.
+    {
+        sweet::ui::MainWindow window;
+        window.resize(1440, 900);
+        window.show();
+        spin(200);
+
+        // The welcome screen is a screen like any other, so it can be reviewed the
+        // same way instead of only being seen on a fresh install.
+        const bool welcomeOnly = arguments.contains(QStringLiteral("--welcome"));
+
+        if (!welcomeOnly && !window.openFile(documentPath)) {
+            status = fail("MainWindow could not open the document");
+        } else {
+            // Give the worker pool time to deliver page and thumbnail bitmaps.
+            spin(welcomeOnly ? 0 : 2500);
+
+            if (!screenshotPath.isEmpty()) {
+                const QPixmap shot = window.grab();
+                if (shot.isNull() || !shot.save(screenshotPath)) {
+                    status = fail("could not save the screenshot");
+                } else {
+                    std::printf("smoke: %sscreenshot written to %s\n",
+                                welcomeOnly ? "welcome " : "", qUtf8Printable(screenshotPath));
+                }
+            }
         }
-        return 0;
     }
 
-    if (!window.openFile(documentPath))
-        return fail("MainWindow could not open the document");
+    // Shutting down is part of what this test covers. Closing a document with
+    // renders still in flight, and freeing themed pixmaps, both used to crash
+    // after the last line of output rather than during the test itself.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    spin(0);
 
-    // Give the worker pool time to deliver page and thumbnail bitmaps.
-    spin(2500);
-
-    if (!screenshotPath.isEmpty()) {
-        const QPixmap shot = window.grab();
-        if (shot.isNull() || !shot.save(screenshotPath))
-            return fail("could not save the screenshot");
-        std::printf("smoke: screenshot written to %s\n", qUtf8Printable(screenshotPath));
-    }
-
-    std::printf("smoke: ok\n");
-    return 0;
+    if (status == 0)
+        std::printf("smoke: ok\n");
+    return status;
 }

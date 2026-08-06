@@ -57,6 +57,11 @@ private:
     PageCache m_cache;
     std::atomic<quint64> m_generation{ 0 };
 
+    /// Cleared when this queue starts being destroyed. Jobs already on a worker
+    /// thread check it before reaching back into the queue, so closing a document
+    /// mid-render cannot touch a half-destroyed object.
+    std::shared_ptr<std::atomic_bool> m_alive;
+
     mutable QMutex m_pendingMutex;
     QSet<RenderKey> m_pending;
 };

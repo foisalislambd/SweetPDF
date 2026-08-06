@@ -3,6 +3,7 @@
 #include "ui/theme/IconLibrary.h"
 
 #include <QApplication>
+#include <QCoreApplication>
 #include <QFontDatabase>
 #include <QGraphicsDropShadowEffect>
 #include <QPainter>
@@ -140,6 +141,13 @@ Theme::Theme()
     const QFont base = QApplication::font();
     if (base.pointSizeF() > 0)
         m_basePointSize = qMax(9.5, base.pointSizeF());
+
+    // The cache holds QPixmaps, and this object is a function-local static, so it
+    // would otherwise be destroyed after QApplication - by which point the
+    // platform plugin is gone and freeing a pixmap is undefined behaviour (an
+    // access violation on Windows). A post routine runs at the start of
+    // ~QCoreApplication, while the GUI stack is still up.
+    qAddPostRoutine([] { Theme::instance().m_iconCache.clear(); });
 }
 
 Theme &Theme::instance()
