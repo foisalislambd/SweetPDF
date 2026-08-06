@@ -13,6 +13,11 @@
 
 #include <mupdf/pdf.h>
 
+#if defined(SWEETPDF_HAS_OCR)
+#  include <tesseract/baseapi.h>
+#  include <tesseract/renderer.h>
+#endif
+
 namespace sweet::core::exporter {
 namespace {
 
@@ -46,7 +51,60 @@ void writeAll(const QString &path, const QString &contents)
         throw MuError(QStringLiteral("Could not write %1").arg(QFileInfo(path).fileName()));
 }
 
+QStringList tessdataSearchPaths()
+{
+    QStringList paths;
+    const QByteArray fromEnv = qgetenv("TESSDATA_PREFIX");
+    if (!fromEnv.isEmpty()) {
+        const QString root = QFile::decodeName(fromEnv);
+        // TESSDATA_PREFIX is either the tessdata folder itself or its parent.
+        paths << root;
+        paths << QDir(root).filePath(QStringLiteral("tessdata"));
+    }
+    paths << QStringLiteral("/usr/share/tesseract-ocr/5/tessdata")
+          << QStringLiteral("/usr/share/tesseract-ocr/4.00/tessdata")
+          << QStringLiteral("/usr/share/tesseract-ocr/tessdata")
+          << QStringLiteral("/usr/share/tessdata")
+          << QStringLiteral("/opt/homebrew/share/tessdata")
+          << QStringLiteral("/usr/local/share/tessdata");
+#ifdef Q_OS_WIN
+    paths << QStringLiteral("C:/Program Files/Tesseract-OCR/tessdata")
+          << QStringLiteral("C:/Program Files (x86)/Tesseract-OCR/tessdata");
+#endif
+    return paths;
+}
+
 } // namespace
+
+QString defaultTessdataDir()
+{
+    for (const QString &path : tessdataSearchPaths()) {
+        const QDir directory(path);
+        if (!directory.exists())
+            continue;
+        if (!directory.entryList({ QStringLiteral("*.traineddata") }, QDir::Files).isEmpty())
+            return path;
+    }
+    return {};
+}
+
+QStringList installedOcrLanguages(const QString &tessdataDir)
+{
+    const QString root = tessdataDir.isEmpty() ? defaultTessdataDir() : tessdataDir;
+    if (root.isEmpty())
+        return {};
+
+    QStringList found;
+    const QDir directory(root);
+    const QStringList files =
+        directory.entryList({ QStringLiteral("*.traineddata") }, QDir::Files, QDir::Name);
+    for (const QString &file : files) {
+        const QString code = QFileInfo(file).completeBaseName();
+        if (code != QLatin1String("osd") && !found.contains(code))
+            found.append(code);
+    }
+    return found;
+}
 
 QStringList pagesToImages(const PdfDocument &document, const QList<int> &indices,
                           const QString &directory, const QString &baseName,
@@ -149,88 +207,125 @@ void toHtml(const PdfDocument &document, const QString &path, const ProgressCall
 
 namespace {
 
-/// Rasterise one page into an open writer. This lives in its own function so the
-/// caller's loop counters never share a stack frame with MuPDF's setjmp.
-void writeOcrPage(fz_context *ctx, fz_document_writer *writer, PdfPage &page, int index)
+#if defined(SWEETPDF_HAS_OCR)
+
+QImage pageBitmap(const PdfDocument &document, int pageIndex, int dpi)
 {
-    const QSizeF size = page.sizePoints();
-    fz_device *device = nullptr;
-    fz_var(device);
-    fz_try(ctx) {
-        const fz_rect box = fz_make_rect(0, 0, float(size.width()), float(size.height()));
-        device = fz_begin_page(ctx, writer, box);
-        fz_run_page(ctx, page.handle(), device, fz_identity, nullptr);
-        fz_end_page(ctx, writer);
-    }
-    fz_catch(ctx) {
-        fz_drop_document_writer(ctx, writer);
-        MuContext::raise(ctx, QStringLiteral("OCR failed on page %1").arg(index + 1));
-    }
+    auto page = document.page(pageIndex);
+    if (!page)
+        throw MuError(QStringLiteral("Could not load page %1").arg(pageIndex + 1));
+
+    const qreal scale = dpi / 72.0;
+    const QImage image = page->render(scale);
+    if (image.isNull())
+        throw MuError(QStringLiteral("Could not render page %1 for OCR").arg(pageIndex + 1));
+    return image;
 }
 
-/// Flush and release the writer. A cancelled run is dropped without closing so
-/// MuPDF does not bother finalising a file we are about to delete.
-void finishOcrWriter(fz_context *ctx, fz_document_writer *writer, bool cancelled)
-{
-    fz_try(ctx) {
-        if (!cancelled)
-            fz_close_document_writer(ctx, writer);
-    }
-    fz_always(ctx)
-        fz_drop_document_writer(ctx, writer);
-    fz_catch(ctx)
-        MuContext::raise(ctx, QStringLiteral("Could not finish the OCR document"));
-}
+#endif
 
 } // namespace
 
 void toSearchablePdf(const PdfDocument &document, const QString &path, const QString &language,
                      const QString &tessdataDir, int dpi, const ProgressCallback &progress)
 {
-    fz_context *ctx = MuContext::forThread();
+#if !defined(SWEETPDF_HAS_OCR)
+    Q_UNUSED(document);
+    Q_UNUSED(path);
+    Q_UNUSED(language);
+    Q_UNUSED(tessdataDir);
+    Q_UNUSED(dpi);
+    Q_UNUSED(progress);
+    throw MuError(QStringLiteral(
+        "This build of SweetPDF was compiled without Tesseract. Install Tesseract and rebuild "
+        "with SWEETPDF_ENABLE_OCR=ON."));
+#else
     const int pages = document.pageCount();
     if (pages <= 0)
         throw MuError(QStringLiteral("The document has no pages"));
 
-    // MuPDF's PDF/OCR writer rasterises each page, runs Tesseract over it and
-    // stores the recognised words as invisible text on top of the image. That is
-    // exactly what a searchable scan is, so there is no need to build the text
-    // layer by hand.
-    QStringList options;
-    options << QStringLiteral("compression=flate")
-            << QStringLiteral("resolution=%1").arg(qBound(72, dpi, 600));
-    if (!language.isEmpty())
-        options << QStringLiteral("ocr-language=%1").arg(language);
-    if (!tessdataDir.isEmpty())
-        options << QStringLiteral("ocr-datadir=%1").arg(tessdataDir);
-
-    const QByteArray nativePath = QFile::encodeName(path);
-    const QByteArray optionString = options.join(QLatin1Char(',')).toUtf8();
-
-    fz_document_writer *writer = nullptr;
-    fz_var(writer);
-    fz_try(ctx)
-        writer = fz_new_pdfocr_writer(ctx, nativePath.constData(), optionString.constData());
-    fz_catch(ctx)
-        MuContext::raise(ctx, QStringLiteral("This build of MuPDF cannot run OCR"));
-
-    bool cancelled = false;
-    for (int index = 0; index < pages; ++index) {
-        if (!keepGoing(progress, index, pages)) {
-            cancelled = true;
-            break;
-        }
-
-        if (auto page = document.page(index)) {
-            const std::lock_guard<std::mutex> guard(document.parseMutex());
-            writeOcrPage(ctx, writer, *page, index);
-        }
+    const QString dataDir = tessdataDir.isEmpty() ? defaultTessdataDir() : tessdataDir;
+    if (dataDir.isEmpty()) {
+        throw MuError(QStringLiteral(
+            "No Tesseract language data was found. Install a language package such as "
+            "tesseract-ocr-eng."));
     }
 
-    finishOcrWriter(ctx, writer, cancelled);
+    const QString lang = language.isEmpty() ? QStringLiteral("eng") : language;
+    if (!QFileInfo::exists(QDir(dataDir).filePath(lang + QStringLiteral(".traineddata")))) {
+        throw MuError(QStringLiteral("Language data for “%1” is not installed in %2.")
+                          .arg(lang, dataDir));
+    }
 
-    if (cancelled)
+    // TessPDFRenderer writes `<outputbase>.pdf`, so strip a trailing .pdf from
+    // the path the user picked.
+    QString outputBase = path;
+    if (outputBase.endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive))
+        outputBase.chop(4);
+
+    tesseract::TessBaseAPI api;
+    const QByteArray dataDirBytes = QFile::encodeName(dataDir);
+    const QByteArray langBytes = lang.toUtf8();
+    if (api.Init(dataDirBytes.constData(), langBytes.constData()) != 0) {
+        throw MuError(QStringLiteral("Could not start Tesseract with language “%1”.").arg(lang));
+    }
+
+    const QByteArray outputBytes = QFile::encodeName(outputBase);
+    tesseract::TessPDFRenderer renderer(outputBytes.constData(), api.GetDatapath(), false);
+    if (!renderer.BeginDocument("SweetPDF OCR")) {
+        api.End();
+        throw MuError(QStringLiteral("Could not create the searchable PDF"));
+    }
+
+    bool cancelled = false;
+    QString failure;
+    try {
+        for (int index = 0; index < pages; ++index) {
+            if (!keepGoing(progress, index, pages)) {
+                cancelled = true;
+                break;
+            }
+
+            // RGB888 is what SetImage expects; a deep copy keeps the buffer alive
+            // for the whole Recognize call even if Qt recycles the original.
+            QImage image = pageBitmap(document, index, dpi).convertToFormat(QImage::Format_RGB888);
+            image = image.copy();
+            api.SetImage(image.constBits(), image.width(), image.height(), 3, image.bytesPerLine());
+            api.SetSourceResolution(dpi);
+            if (api.Recognize(nullptr) != 0) {
+                failure = QStringLiteral("OCR failed on page %1").arg(index + 1);
+                break;
+            }
+            if (!renderer.AddImage(&api)) {
+                failure = QStringLiteral("Could not write OCR page %1").arg(index + 1);
+                break;
+            }
+        }
+    } catch (const std::exception &error) {
+        failure = QString::fromUtf8(error.what());
+    }
+
+    const bool finished = failure.isEmpty() && !cancelled && renderer.EndDocument();
+    api.End();
+
+    const QString written = outputBase + QStringLiteral(".pdf");
+    if (cancelled || !failure.isEmpty() || !finished) {
+        QFile::remove(written);
+        if (cancelled)
+            return;
+        throw MuError(failure.isEmpty() ? QStringLiteral("Could not finish the searchable PDF")
+                                        : failure);
+    }
+
+    // Rename into the exact path the dialog asked for when it differed only by
+    // case of the extension, or when TessPDFRenderer already used that name.
+    if (QFileInfo(written).absoluteFilePath() != QFileInfo(path).absoluteFilePath()
+        && QFile::exists(written)) {
         QFile::remove(path);
+        if (!QFile::rename(written, path))
+            throw MuError(QStringLiteral("Could not write %1").arg(QFileInfo(path).fileName()));
+    }
+#endif
 }
 
 } // namespace sweet::core::exporter

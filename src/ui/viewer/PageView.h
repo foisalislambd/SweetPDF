@@ -11,6 +11,7 @@
 #include <QPolygonF>
 
 class QGraphicsScene;
+class QPlainTextEdit;
 class QPropertyAnimation;
 
 namespace sweet::ui {
@@ -102,11 +103,15 @@ Q_SIGNALS:
     void annotationSelected(int pageIndex, int objectNumber);
     void statusMessage(const QString &message);
 
-    /// Text was selected with the Edit text tool, so the wording under it should
-    /// be replaced. The window owns that command, hence the signal.
+    /// Text was selected with the Edit text tool. The view opens an inline editor
+    /// itself; this signal remains for listeners that want to know.
     void textEditRequested();
 
+    /// The inline editor committed a replacement for the current selection.
+    void textReplaceRequested(const QString &replacement);
+
 protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
@@ -151,6 +156,11 @@ private:
     void createNoteAt(int pageIndex, const QPointF &pagePoint);
     void createTextBoxAt(int pageIndex, const QPointF &pagePoint);
 
+    void startInlineTextEdit();
+    void commitInlineTextEdit();
+    void cancelInlineTextEdit();
+    QRect selectionViewportRect() const;
+
     /// The annotation under a page point, topmost first, or an object number of 0.
     sweet::core::Annotation annotationAt(int pageIndex, const QPointF &pagePoint) const;
 
@@ -176,6 +186,9 @@ private:
     sweet::core::TextRange m_selection;
     int m_selectionAnchor = -1;
     bool m_selectingText = false;
+    QPoint m_textPressPos;
+
+    QPlainTextEdit *m_inlineEdit = nullptr;
 
     /// Search hits, by page, plus the one that is currently focused.
     QHash<int, QList<sweet::core::TextRange>> m_matches;

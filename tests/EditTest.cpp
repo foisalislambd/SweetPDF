@@ -265,6 +265,24 @@ int main(int argc, char *argv[])
             check(QFileInfo(html).size() > 0, "an HTML export is written");
         }
 
+        // --- OCR produces a searchable PDF --------------------------------
+        std::printf("ocr\n");
+        {
+            auto document = PdfDocument::open(source);
+            const QString tessdata = exporter::defaultTessdataDir();
+            check(!tessdata.isEmpty(), "Tesseract language data is installed");
+            check(exporter::installedOcrLanguages(tessdata).contains(QStringLiteral("eng")),
+                  "the English language pack is available");
+
+            const QString searchable = QDir(workDir).filePath(QStringLiteral("searchable.pdf"));
+            exporter::toSearchablePdf(*document, searchable, QStringLiteral("eng"), tessdata, 150);
+            check(QFileInfo(searchable).size() > 1000, "OCR writes a searchable PDF");
+
+            auto reopened = PdfDocument::open(searchable);
+            const QString text = exporter::documentText(*reopened);
+            check(!text.trimmed().isEmpty(), "the OCR PDF has a selectable text layer");
+        }
+
         // --- Pictures and links -------------------------------------------
         std::printf("content\n");
         {

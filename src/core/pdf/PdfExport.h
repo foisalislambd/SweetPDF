@@ -40,12 +40,19 @@ void toHtml(const PdfDocument &document, const QString &path,
 /// Runs OCR over every page and writes a new PDF that keeps the page image and
 /// adds an invisible text layer, so the result is searchable and selectable.
 ///
+/// Uses Tesseract directly (distro MuPDF builds often ship without OCR).
 /// `language` is a Tesseract language code such as "eng"; `tessdataDir` may be
-/// empty to use the system location. Throws MuError when the MuPDF build has no
-/// OCR support or the language data is missing.
+/// empty to search the usual system locations. Throws MuError when Tesseract is
+/// unavailable or the language data is missing.
 void toSearchablePdf(const PdfDocument &document, const QString &path, const QString &language,
                      const QString &tessdataDir, int dpi,
                      const ProgressCallback &progress = {});
+
+/// Directory that holds `*.traineddata`, or empty when none is installed.
+QString defaultTessdataDir();
+
+/// Language codes with installed traineddata under `tessdataDir` (or the default).
+QStringList installedOcrLanguages(const QString &tessdataDir = {});
 
 } // namespace exporter
 } // namespace sweet::core

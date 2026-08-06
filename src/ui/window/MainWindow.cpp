@@ -269,6 +269,8 @@ void MainWindow::createActions()
           QKeySequence() },
         { "toolRedact", tr("Mark Redaction"), QStringLiteral("redact"), core::Tool::Redact,
           QKeySequence() },
+        { "toolEditText", tr("Edit Text"), QStringLiteral("edit-text"), core::Tool::EditText,
+          QKeySequence(Qt::Key_T) },
     };
 
     for (const auto &definition : tools) {
@@ -378,9 +380,18 @@ void MainWindow::createActions()
                       QKeySequence(), [this] { flattenDocument(); });
 
     // Content
-    addDocumentAction(QStringLiteral("editText"), tr("Replace Text"),
-                      QStringLiteral("edit-text"), QKeySequence(),
-                      [this] { replaceSelectedText(); });
+    addDocumentAction(QStringLiteral("editText"), tr("Edit Text"),
+                      QStringLiteral("edit-text"), QKeySequence(), [this] {
+                          // Arm the edit tool so a click on the page opens the
+                          // inline editor. If text is already selected, edit it
+                          // straight away - that is what the menu item means.
+                          if (PageView *view = currentView(); view && view->hasSelection()) {
+                              replaceSelectedText();
+                              return;
+                          }
+                          if (QAction *tool = action(QStringLiteral("toolEditText")))
+                              tool->trigger();
+                      });
     addDocumentAction(QStringLiteral("editImage"), tr("Replace Image"),
                       QStringLiteral("edit-image"), QKeySequence(),
                       [this] { replaceSelectedImage(); });
@@ -720,7 +731,7 @@ void MainWindow::createRibbon()
     editContent->addAction(action(QStringLiteral("addText")));
     editContent->addAction(action(QStringLiteral("addShape")));
     editContent->addAction(action(QStringLiteral("addEllipse")));
-    editContent->addCompactAction(action(QStringLiteral("editText")));
+    editContent->addAction(action(QStringLiteral("toolEditText")));
     editContent->addCompactAction(action(QStringLiteral("editImage")));
     editContent->addCompactAction(action(QStringLiteral("addImage")));
     RibbonGroup *editLinks = editPage->addGroup(tr("Links"));
@@ -1110,12 +1121,11 @@ bool MainWindow::openFile(const QString &path)
         view->setFocus();
     });
     connect(view, &PageView::statusMessage, this, &MainWindow::report);
-    connect(view, &PageView::textEditRequested, this, [this, view] {
-        // Only for the view the reader is actually looking at: a background tab
-        // must not put a dialog on screen.
-        if (view == currentView())
-            replaceSelectedText();
-    });
+    connect(view, &PageView::textReplaceRequested, this,
+            [this, view](const QString &replacement) {
+                if (view == currentView())
+                    replaceSelectedTextWith(replacement);
+            });
 
     const int index = m_tabs->addTab(page, session->displayName());
     m_tabs->setTabToolTip(index, path);
@@ -2108,7 +2118,7 @@ void MainWindow::recogniseText()
                     [&](const std::function<bool(int, int)> &progress) {
                         try {
                             core::exporter::toSearchablePdf(*session->document(), output,
-                                                            dialog.language(), QString(),
+                                                            dialog.language(), dialog.tessdataDir(),
                                                             dialog.dpi(), progress);
                         } catch (const std::exception &failure) {
                             reportError(tr("Could not recognise text"),
@@ -2331,9 +2341,10 @@ void MainWindow::replaceSelectedText()
     if (!session || !view || !requireEditableDocument(true))
         return;
 
-    const QList<QRectF> boxes = view->selectionBoxes();
-    if (boxes.isEmpty()) {
-        report(tr("Select the text you want to replace first."));
+    if (view->selectionBoxes().isEmpty()) {
+        report(tr("Click the text you want to change, or drag across it."));
+        if (QAction *tool = action(QStringLiteral("toolEditText")))
+            tool->trigger();
         return;
     }
 
@@ -2344,6 +2355,22 @@ void MainWindow::replaceSelectedText()
                                                       QLineEdit::Normal, original, &accepted);
     if (!accepted)
         return;
+
+    replaceSelectedTextWith(replacement);
+}
+
+void MainWindow::replaceSelectedTextWith(const QString &replacement)
+{
+    auto *session = currentSession();
+    PageView *view = currentView();
+    if (!session || !view || !requireEditableDocument(true))
+        return;
+
+    const QList<QRectF> boxes = view->selectionBoxes();
+    if (boxes.isEmpty()) {
+        report(tr("Click the text you want to change, or drag across it."));
+        return;
+    }
 
     const int pageIndex = view->selectionPage();
     QRectF area = boxes.first();

@@ -1,10 +1,10 @@
 #include "ui/dialogs/OcrDialog.h"
 
+#include "core/pdf/PdfExport.h"
 #include "ui/theme/Theme.h"
 
 #include <QComboBox>
 #include <QDialogButtonBox>
-#include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
@@ -17,37 +17,6 @@
 #include <QVBoxLayout>
 
 namespace sweet::ui {
-namespace {
-
-/// Language data that is actually installed, so the list never offers something
-/// that will fail halfway through a long document.
-QStringList installedLanguages()
-{
-    static const QStringList searchPaths = {
-        QStringLiteral("/usr/share/tesseract-ocr/5/tessdata"),
-        QStringLiteral("/usr/share/tesseract-ocr/4.00/tessdata"),
-        QStringLiteral("/usr/share/tesseract-ocr/tessdata"),
-        QStringLiteral("/usr/share/tessdata"),
-        QStringLiteral("/opt/homebrew/share/tessdata"),
-    };
-
-    QStringList found;
-    for (const QString &path : searchPaths) {
-        const QDir directory(path);
-        if (!directory.exists())
-            continue;
-        const QStringList files = directory.entryList({ QStringLiteral("*.traineddata") },
-                                                      QDir::Files, QDir::Name);
-        for (const QString &file : files) {
-            const QString code = QFileInfo(file).completeBaseName();
-            if (code != QLatin1String("osd") && !found.contains(code))
-                found.append(code);
-        }
-    }
-    return found;
-}
-
-} // namespace
 
 OcrDialog::OcrDialog(const QString &suggestedOutput, QWidget *parent)
     : QDialog(parent)
@@ -63,9 +32,9 @@ OcrDialog::OcrDialog(const QString &suggestedOutput, QWidget *parent)
     heading->setFont(themeFont(TextRole::Title));
     layout->addWidget(heading);
 
-    auto *explain = new QLabel(tr("Every page is rendered, read by the OCR engine, and written "
-                                  "to a new PDF with an invisible text layer, so the result "
-                                  "looks the same but can be searched and copied."),
+    auto *explain = new QLabel(tr("Every page is rendered, read by Tesseract, and written to a "
+                                  "new PDF with an invisible text layer, so the result looks "
+                                  "the same but can be searched, selected and copied."),
                                this);
     explain->setObjectName(QStringLiteral("SectionLabel"));
     explain->setWordWrap(true);
@@ -75,9 +44,11 @@ OcrDialog::OcrDialog(const QString &suggestedOutput, QWidget *parent)
     form->setSpacing(8);
 
     m_language = new QComboBox(this);
-    const QStringList languages = installedLanguages();
+    m_tessdataDir = core::exporter::defaultTessdataDir();
+    const QStringList languages = core::exporter::installedOcrLanguages(m_tessdataDir);
     if (languages.isEmpty()) {
-        m_language->addItem(tr("English (eng)"), QStringLiteral("eng"));
+        m_language->addItem(tr("No languages installed"), QString());
+        m_language->setEnabled(false);
     } else {
         for (const QString &code : languages)
             m_language->addItem(code, code);
@@ -107,7 +78,8 @@ OcrDialog::OcrDialog(const QString &suggestedOutput, QWidget *parent)
 
     m_hint = new QLabel(languages.isEmpty()
                             ? tr("No language data was found. Install a Tesseract language "
-                                 "package, for example tesseract-ocr-eng.")
+                                 "package, for example tesseract-ocr-eng, then reopen this "
+                                 "dialog.")
                             : tr("300 dpi suits most scans. Higher settings are slower and "
                                  "rarely read better."),
                         this);
@@ -117,6 +89,7 @@ OcrDialog::OcrDialog(const QString &suggestedOutput, QWidget *parent)
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     buttons->button(QDialogButtonBox::Ok)->setText(tr("Recognise"));
+    buttons->button(QDialogButtonBox::Ok)->setEnabled(!languages.isEmpty());
     layout->addWidget(buttons);
 
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
@@ -142,6 +115,11 @@ QString OcrDialog::language() const
 QString OcrDialog::outputPath() const
 {
     return m_output->text();
+}
+
+QString OcrDialog::tessdataDir() const
+{
+    return m_tessdataDir;
 }
 
 int OcrDialog::dpi() const

@@ -54,7 +54,7 @@ const ToolInfo toolInfo[] = {
       "Drag over anything to be removed, then apply the redactions to delete it for good.",
       false, false },
     { Tool::EditText, "edit-text", "Edit text",
-      "Drag across the words you want to change, then type the new wording.", false, false },
+      "Click a line to edit it, or drag across the words you want to change.", false, false },
     { Tool::EditImage, "edit-image", "Edit image", "Click an image to replace or remove it.",
       false, false },
     { Tool::AddImage, "add-image", "Add image", "Click where the image should go.", false,

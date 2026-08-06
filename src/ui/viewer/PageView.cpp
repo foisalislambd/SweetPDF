@@ -8,6 +8,8 @@
 #include <QClipboard>
 #include <QContextMenuEvent>
 #include <QDesktopServices>
+#include <QEvent>
+#include <QFrame>
 #include <QMessageBox>
 #include <QGraphicsScene>
 #include <QInputDialog>
@@ -15,8 +17,10 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPlainTextEdit>
 #include <QPropertyAnimation>
 #include <QScrollBar>
+#include <QTimer>
 #include <QWheelEvent>
 
 namespace sweet::ui {
@@ -892,6 +896,115 @@ QList<QRectF> PageView::selectionBoxes() const
     return {};
 }
 
+QRect PageView::selectionViewportRect() const
+{
+    const QList<QRectF> boxes = selectionBoxes();
+    PageItem *item = itemForPage(m_selectionPage);
+    if (!item || boxes.isEmpty())
+        return {};
+
+    QRectF area = boxes.first();
+    for (const QRectF &box : boxes)
+        area = area.united(box);
+
+    const QRectF inItem = item->pageToItem().mapRect(area);
+    const QRectF inScene = item->mapRectToScene(inItem);
+    return mapFromScene(inScene).boundingRect().adjusted(-4, -3, 8, 4);
+}
+
+void PageView::startInlineTextEdit()
+{
+    cancelInlineTextEdit();
+    if (!hasSelection())
+        return;
+
+    const QRect box = selectionViewportRect();
+    if (box.isEmpty())
+        return;
+
+    m_inlineEdit = new QPlainTextEdit(viewport());
+    m_inlineEdit->setObjectName(QStringLiteral("InlineTextEdit"));
+    m_inlineEdit->setPlainText(selectedText());
+    m_inlineEdit->selectAll();
+    m_inlineEdit->setTabChangesFocus(true);
+    m_inlineEdit->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_inlineEdit->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_inlineEdit->setFrameShape(QFrame::NoFrame);
+    m_inlineEdit->setAttribute(Qt::WA_StyledBackground, true);
+    m_inlineEdit->setStyleSheet(QStringLiteral(
+        "QPlainTextEdit#InlineTextEdit {"
+        "  background: #FFFBE6; color: #141825; border: 2px solid #2F86FF;"
+        "  border-radius: 4px; padding: 2px 4px;"
+        "}"));
+
+    QFont font = m_inlineEdit->font();
+    font.setPointSizeF(qBound(9.0, box.height() * 0.55, 22.0));
+    m_inlineEdit->setFont(font);
+
+    const int height = qMax(box.height() + 6, int(font.pointSizeF() * 2.2) + 10);
+    m_inlineEdit->setGeometry(box.x(), box.y(), qMax(box.width(), 120), height);
+    m_inlineEdit->show();
+    m_inlineEdit->setFocus(Qt::MouseFocusReason);
+
+    connect(m_inlineEdit, &QPlainTextEdit::textChanged, this, [this] {
+        if (!m_inlineEdit)
+            return;
+        const QSize hint = m_inlineEdit->document()->size().toSize();
+        m_inlineEdit->resize(qMax(m_inlineEdit->width(), hint.width() + 16),
+                             qMax(m_inlineEdit->height(), hint.height() + 10));
+    });
+
+    m_inlineEdit->installEventFilter(this);
+}
+
+void PageView::commitInlineTextEdit()
+{
+    if (!m_inlineEdit)
+        return;
+
+    const QString replacement = m_inlineEdit->toPlainText();
+    // Detach first so a nested focus change cannot re-enter cancel.
+    QPlainTextEdit *editor = m_inlineEdit;
+    m_inlineEdit = nullptr;
+    editor->deleteLater();
+    Q_EMIT textReplaceRequested(replacement);
+}
+
+void PageView::cancelInlineTextEdit()
+{
+    if (!m_inlineEdit)
+        return;
+    QPlainTextEdit *editor = m_inlineEdit;
+    m_inlineEdit = nullptr;
+    editor->deleteLater();
+}
+
+bool PageView::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_inlineEdit) {
+        if (event->type() == QEvent::KeyPress) {
+            auto *key = static_cast<QKeyEvent *>(event);
+            if (key->key() == Qt::Key_Escape) {
+                cancelInlineTextEdit();
+                return true;
+            }
+            if (key->key() == Qt::Key_Return
+                && !(key->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier))) {
+                commitInlineTextEdit();
+                return true;
+            }
+        }
+        if (event->type() == QEvent::FocusOut) {
+            // Defer so a click that commits elsewhere does not fight this.
+            QTimer::singleShot(0, this, [this] {
+                if (m_inlineEdit && !m_inlineEdit->hasFocus())
+                    commitInlineTextEdit();
+            });
+        }
+    }
+    return QGraphicsView::eventFilter(watched, event);
+}
+
 void PageView::beginImagePlacement(const QImage &image, const QString &commandText)
 {
     if (image.isNull())
@@ -1039,11 +1152,22 @@ void PageView::mousePressEvent(QMouseEvent *event)
             }
 
             switch (tool) {
+            case core::Tool::EditText: {
+                cancelInlineTextEdit();
+                if (auto text = textOf(pageIndex)) {
+                    bool hitText = false;
+                    m_selectionAnchor = text->indexAt(pagePoint, &hitText);
+                    m_selectingText = true;
+                    m_textPressPos = event->position().toPoint();
+                    setSelection(pageIndex, { m_selectionAnchor, m_selectionAnchor });
+                }
+                event->accept();
+                return;
+            }
             case core::Tool::Select:
             case core::Tool::Highlight:
             case core::Tool::Underline:
-            case core::Tool::Strikeout:
-            case core::Tool::EditText: {
+            case core::Tool::Strikeout: {
                 if (auto text = textOf(pageIndex)) {
                     m_selectionAnchor = text->indexAt(pagePoint);
                     m_selectingText = true;
@@ -1169,12 +1293,33 @@ void PageView::mouseReleaseEvent(QMouseEvent *event)
         const core::AnnotationType markup = markupTypeFor(m_session->tool());
         if (markup != core::AnnotationType::Other && hasSelection()) {
             markUpSelection(markup);
-        } else if (m_session->tool() == core::Tool::EditText && hasSelection()) {
-            // Same idea for the text tool: the wording to change is whatever was
-            // just dragged over, so the dialog opens on release instead of asking
-            // the reader to select and then find a button.
-            Q_EMIT selectionChanged(true);
-            Q_EMIT textEditRequested();
+        } else if (m_session->tool() == core::Tool::EditText) {
+            // A click (no real drag) takes the whole line under the pointer -
+            // that is what people mean by "click this text to edit it", especially
+            // on forms and invoices. A drag keeps the exact range they painted.
+            const QPoint delta = event->position().toPoint() - m_textPressPos;
+            const bool wasClick = delta.manhattanLength() < 5;
+            if (wasClick) {
+                QPointF pagePoint;
+                PageItem *item = pageAt(event->position().toPoint(), &pagePoint);
+                if (item) {
+                    if (auto text = textOf(item->pageIndex())) {
+                        bool hitText = false;
+                        const int index = text->indexAt(pagePoint, &hitText);
+                        if (hitText)
+                            setSelection(item->pageIndex(), text->lineAt(index));
+                        else
+                            clearSelection();
+                    }
+                }
+            }
+            if (hasSelection()) {
+                Q_EMIT selectionChanged(true);
+                Q_EMIT textEditRequested();
+                startInlineTextEdit();
+            } else {
+                Q_EMIT statusMessage(tr("Click a line of text to edit it."));
+            }
         } else if (hasSelection()) {
             Q_EMIT selectionChanged(true);
         }

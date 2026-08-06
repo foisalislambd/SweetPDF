@@ -77,6 +77,7 @@ public Q_SLOTS:
     void addLinkToPage();
     void signDocument();
     void replaceSelectedText();
+    void replaceSelectedTextWith(const QString &replacement);
 
     // --- Tools -----------------------------------------------------------
     void compressDocument();

@@ -34,3 +34,8 @@ target_link_libraries(sweetpdf_core
     PUBLIC  Qt6::Core Qt6::Gui
     PRIVATE Qt6::Concurrent MuPDF::MuPDF sweetpdf_warnings
 )
+
+if(SWEETPDF_ENABLE_OCR)
+    target_compile_definitions(sweetpdf_core PRIVATE SWEETPDF_HAS_OCR=1)
+    target_link_libraries(sweetpdf_core PRIVATE Tesseract::Tesseract)
+endif()

@@ -20,6 +20,7 @@ public:
 
     QString language() const;
     QString outputPath() const;
+    QString tessdataDir() const;
     int dpi() const;
 
 private:
@@ -29,6 +30,7 @@ private:
     QLineEdit *m_output = nullptr;
     QSpinBox *m_dpi = nullptr;
     QLabel *m_hint = nullptr;
+    QString m_tessdataDir;
 };
 
 } // namespace sweet::ui
