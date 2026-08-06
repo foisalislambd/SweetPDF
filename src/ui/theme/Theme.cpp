@@ -378,8 +378,20 @@ QToolButton#AppMenu { padding: 5px 9px; font-weight: 600; }
 #PanelTitle { font-size: {fontBody}pt; font-weight: 600; }
 #SidebarRail { background: {window}; border-right: 1px solid {border}; }
 #Sidebar { background: {window}; border-right: 1px solid {border}; }
-#PropertiesPanel { background: {window}; border-left: 1px solid {border}; }
+#Inspector { background: {window}; border-left: 1px solid {border}; }
+#PropertiesPanel { background: {window}; }
 #SectionLabel { color: {textMuted}; font-size: {fontCaption}pt; font-weight: 600; }
+
+/* The tool's own settings, sitting above the document properties. The tint marks
+   it as being about what you are doing rather than about the file. */
+#ToolOptions { background: {surfaceAlt}; border-bottom: 1px solid {border}; }
+#ToolOptions QPushButton { padding: 5px 10px; text-align: left; }
+QToolButton#ColourSwatch {
+    border: none; border-radius: 4px; padding: 1px; min-width: 24px; min-height: 24px;
+    font-weight: 600; color: {textMuted};
+}
+QToolButton#ColourSwatch:hover { background: {hover}; }
+QToolButton#ColourSwatch:checked { background: {accentSoft}; }
 #FieldLabel { color: {textMuted}; font-size: {fontSmall}pt; }
 #FieldValue { font-size: {fontSmall}pt; }
 #Divider { background: {border}; }

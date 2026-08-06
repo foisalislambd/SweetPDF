@@ -57,8 +57,9 @@ no files from an older build are left behind.
   in the status bar. `Ctrl+1` fits the page, `Ctrl+2` fits the width.
 3. **Find something.** `Ctrl+F`, type, and every match in the document is
   highlighted. `F3` walks through them.
-4. **Mark it up.** On the *Comment* tab pick Highlight, then drag across text.
-  Colour and opacity next to the tools apply to what you draw next.
+4. **Mark it up.** On the *Comment* tab pick Highlight, then drag across text. The
+  right-hand panel switches to that tool's settings — colour and opacity — and
+  they apply to what you draw next.
 5. **Undo freely.** `Ctrl+Z` reverses anything, including page moves. Nothing
   touches the file on disk until you press `Ctrl+S`.
 
@@ -76,7 +77,7 @@ The document view
 | **Ribbon**                             | Commands grouped by job: *Home*, *Edit*, *Comment*, *Page*, *View*, *Protect*, *Tools*. The *Menu* button on the left holds the file commands, recent files, preferences and help. |
 | **Navigation panel** (left, `Ctrl+B`)  | Six panels: *Pages* (thumbnails), *Marks* (bookmarks), *Notes* (comments), *Forms*, *Files* (attachments) and *Layers*.                                                            |
 | **Page canvas**                        | The document. A small floating bar carries the select and pan tools, zoom, and the page layout modes.                                                                              |
-| **Properties panel** (right, `Ctrl+J`) | Title, author, producer, page size, file size, encryption and what the document permits.                                                                                           |
+| **Properties panel** (right, `Ctrl+J`) | Two parts. The top shows the settings of whichever tool is picked, and appears only when that tool has any. Below it: title, author, producer, page size, file size, encryption and what the document permits. |
 | **Status bar**                         | Page number, zoom, layout and theme, with the page field ready for typing.                                                                                                         |
 | **Tabs**                               | Several documents at once. With session restore on, they come back next time.                                                                                                      |
 
@@ -102,7 +103,8 @@ snaps to words and lines, so table columns copy cleanly.
 ### Comment and mark up
 
 - **Highlight, underline, strike out** — pick the tool on the *Comment* tab and
-drag across text. Set the colour and opacity before you draw.
+drag across text. Its colour and opacity appear in the right-hand panel as soon
+as you pick it, and apply to the next mark you make.
 - **Draw or write** — *Draw* for freehand ink, *Note* for a sticky note, *Text*
 for a box of typed text, plus rectangles and ellipses.
 - **Review everything** — the *Notes* panel lists every annotation with its page

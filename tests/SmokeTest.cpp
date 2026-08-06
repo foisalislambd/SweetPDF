@@ -51,7 +51,14 @@ int main(int argc, char *argv[])
 
     QString documentPath;
     QString screenshotPath;
+    // Lets a screenshot show a tool's settings, which only appear once that tool
+    // is picked: --tool=toolHighlight, --tool=toolDraw, and so on.
+    QString toolId;
     for (const QString &argument : arguments.mid(1)) {
+        if (argument.startsWith(QLatin1String("--tool="))) {
+            toolId = argument.section(QLatin1Char('='), 1);
+            continue;
+        }
         if (argument.startsWith(QLatin1String("--")))
             continue;
         if (documentPath.isEmpty())
@@ -103,6 +110,11 @@ int main(int argc, char *argv[])
         } else {
             // Give the worker pool time to deliver page and thumbnail bitmaps.
             spin(welcomeOnly ? 0 : 2500);
+
+            if (!toolId.isEmpty()) {
+                window.runHomeTask(toolId);
+                spin(200);
+            }
 
             if (!screenshotPath.isEmpty()) {
                 const QPixmap shot = window.grab();

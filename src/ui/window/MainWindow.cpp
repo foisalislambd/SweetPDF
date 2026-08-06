@@ -12,6 +12,7 @@
 #include "ui/dialogs/WatermarkDialog.h"
 #include "ui/panels/PropertiesPanel.h"
 #include "ui/panels/Sidebar.h"
+#include "ui/panels/ToolOptionsPanel.h"
 #include "ui/ribbon/RibbonBar.h"
 #include "ui/theme/Theme.h"
 #include "ui/viewer/FindBar.h"
@@ -268,26 +269,13 @@ void MainWindow::createActions()
         m_documentActions.append(entry);
         const core::Tool tool = definition.tool;
         connect(entry, &QAction::triggered, this, [this, tool] {
-            if (auto *session = currentSession())
+            if (auto *session = currentSession()) {
                 session->setTool(tool);
+                revealToolOptions();
+            }
         });
     }
     action(QStringLiteral("toolSelect"))->setChecked(true);
-
-    // Markup style: one colour and one opacity shared by every markup tool, which
-    // is what people expect after they pick a highlighter colour once.
-    QAction *markupColour = makeAction(QStringLiteral("markupColour"), tr("Colour"),
-                                      QStringLiteral("highlight"));
-    m_documentActions.append(markupColour);
-    connect(markupColour, &QAction::triggered, this, [this] {
-        auto *session = currentSession();
-        if (!session)
-            return;
-        const QColor chosen = QColorDialog::getColor(session->markupColor(), this,
-                                                     tr("Markup colour"));
-        if (chosen.isValid())
-            session->setMarkupColor(chosen);
-    });
 
     QAction *deleteAnnotation = makeAction(QStringLiteral("deleteAnnotation"), tr("Delete"),
                                           QStringLiteral("trash"));
@@ -525,8 +513,8 @@ void MainWindow::createActions()
     toggleProperties->setCheckable(true);
     toggleProperties->setChecked(true);
     connect(toggleProperties, &QAction::toggled, this, [this](bool on) {
-        if (m_properties)
-            m_properties->setVisible(on);
+        if (m_inspector)
+            m_inspector->setVisible(on);
     });
 
     QAction *theme = makeAction(QStringLiteral("toggleTheme"), tr("Dark Mode"),
@@ -743,9 +731,6 @@ void MainWindow::createRibbon()
     drawing->addAction(action(QStringLiteral("toolDraw")));
     drawing->addAction(action(QStringLiteral("toolNote")));
     drawing->addAction(action(QStringLiteral("addText")));
-    RibbonGroup *styleGroup = commentPage->addGroup(tr("Style"));
-    styleGroup->addAction(action(QStringLiteral("markupColour")));
-    styleGroup->addWidget(createMarkupOpacityControl(styleGroup));
     RibbonGroup *commentManage = commentPage->addGroup(tr("Manage"));
     commentManage->addAction(action(QStringLiteral("deleteAnnotation")));
 
@@ -857,8 +842,31 @@ void MainWindow::createCentralArea()
     connect(m_welcome, &WelcomeView::forgetRequested, this, &MainWindow::forgetRecentFile);
     connect(m_welcome, &WelcomeView::toolRequested, this, &MainWindow::runHomeTask);
 
-    m_properties = new PropertiesPanel(m_splitter);
-    m_splitter->addWidget(m_properties);
+    // The inspector stacks the current tool's settings above the document's
+    // properties: picking a tool and adjusting it then happen in the same place,
+    // and the ribbon does not need a style group that is meaningless for most
+    // tools.
+    m_inspector = new QWidget(m_splitter);
+    m_inspector->setObjectName(QStringLiteral("Inspector"));
+    auto *inspectorColumn = new QVBoxLayout(m_inspector);
+    inspectorColumn->setContentsMargins(0, 0, 0, 0);
+    inspectorColumn->setSpacing(0);
+
+    m_toolOptions = new ToolOptionsPanel(m_inspector);
+    m_toolOptions->setVisible(false);
+    inspectorColumn->addWidget(m_toolOptions);
+    connect(m_toolOptions, &ToolOptionsPanel::commandRequested, this,
+            [this](const QString &actionId) {
+                if (QAction *command = action(actionId); command && command->isEnabled())
+                    command->trigger();
+            });
+    connect(m_toolOptions, &ToolOptionsPanel::optionsChanged, this,
+            [this] { m_toolOptions->setVisible(m_toolOptions->hasOptions()); });
+
+    m_properties = new PropertiesPanel(m_inspector);
+    inspectorColumn->addWidget(m_properties, 1);
+
+    m_splitter->addWidget(m_inspector);
 
     m_splitter->setStretchFactor(0, 0);
     m_splitter->setStretchFactor(1, 1);
@@ -1161,7 +1169,7 @@ void MainWindow::showWelcomeIfEmpty()
     if (m_ribbon)
         m_ribbon->setVisible(!empty);
     m_sidebar->setVisible(!empty);
-    m_properties->setVisible(!empty);
+    m_inspector->setVisible(!empty && action(QStringLiteral("toggleProperties"))->isChecked());
     statusBar()->setVisible(!empty);
 }
 
@@ -1238,6 +1246,7 @@ void MainWindow::updateForCurrentDocument()
 
     m_sidebar->setSession(session);
     m_properties->setSession(session);
+    m_toolOptions->setSession(session);
 
     if (!hasDocument) {
         m_pageField->clear();
@@ -2288,31 +2297,18 @@ FindBar *MainWindow::currentFindBar() const
     return page ? page->findChild<FindBar *>() : nullptr;
 }
 
-QWidget *MainWindow::createMarkupOpacityControl(QWidget *parent)
+void MainWindow::revealToolOptions()
 {
-    auto *holder = new QWidget(parent);
-    auto *column = new QVBoxLayout(holder);
-    column->setContentsMargins(4, 2, 4, 2);
-    column->setSpacing(2);
+    // Picking a tool with settings is the moment those settings matter, so the
+    // inspector opens itself rather than leaving people to find Ctrl+J.
+    if (!m_toolOptions || !m_toolOptions->hasOptions())
+        return;
 
-    auto *caption = new QLabel(tr("Opacity"), holder);
-    caption->setObjectName(QStringLiteral("SectionLabel"));
-    column->addWidget(caption);
-
-    auto *slider = new QSlider(Qt::Horizontal, holder);
-    slider->setRange(10, 100);
-    slider->setValue(45);
-    slider->setFixedWidth(104);
-    slider->setToolTip(tr("Opacity of new highlights and shapes"));
-    column->addWidget(slider);
-    column->addStretch(1);
-
-    connect(slider, &QSlider::valueChanged, this, [this](int value) {
-        if (auto *session = currentSession())
-            session->setMarkupOpacity(value / 100.0);
-    });
-    m_markupOpacitySlider = slider;
-    return holder;
+    QAction *toggle = action(QStringLiteral("toggleProperties"));
+    if (toggle && !toggle->isChecked())
+        toggle->setChecked(true);
+    else if (m_inspector)
+        m_inspector->setVisible(true);
 }
 
 // --- Recent files ----------------------------------------------------------

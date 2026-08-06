@@ -25,6 +25,7 @@ namespace sweet::ui {
 class FindBar;
 class PageView;
 class PropertiesPanel;
+class ToolOptionsPanel;
 class RibbonBar;
 class Sidebar;
 class WelcomeView;
@@ -130,8 +131,8 @@ private:
     void report(const QString &message);
     void reportError(const QString &title, const QString &details);
 
-    /// The opacity slider that sits in the Comment ribbon page.
-    QWidget *createMarkupOpacityControl(QWidget *parent);
+    /// Opens the inspector when the tool that was just picked has settings.
+    void revealToolOptions();
 
     QAction *makeAction(const QString &id, const QString &text, const QString &iconName,
                         const QKeySequence &shortcut = QKeySequence());
@@ -145,12 +146,13 @@ private:
     RibbonBar *m_ribbon = nullptr;
     QSplitter *m_splitter = nullptr;
     Sidebar *m_sidebar = nullptr;
+    QWidget *m_inspector = nullptr;
+    ToolOptionsPanel *m_toolOptions = nullptr;
     PropertiesPanel *m_properties = nullptr;
     QTabWidget *m_tabs = nullptr;
     QStackedWidget *m_center = nullptr;
     WelcomeView *m_welcome = nullptr;
 
-    QSlider *m_markupOpacitySlider = nullptr;
     QLineEdit *m_pageField = nullptr;
     QLabel *m_pageCountLabel = nullptr;
     QToolButton *m_zoomButton = nullptr;

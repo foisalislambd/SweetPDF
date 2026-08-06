@@ -31,6 +31,7 @@ qt_add_library(sweetpdf_ui STATIC
     panels/CommentsPanel.h   panels/CommentsPanel.cpp
     panels/FormsPanel.h      panels/FormsPanel.cpp
     panels/PropertiesPanel.h panels/PropertiesPanel.cpp
+    panels/ToolOptionsPanel.h panels/ToolOptionsPanel.cpp
 
     # window/ - the shell that wires everything together.
     window/MainWindow.h      window/MainWindow.cpp

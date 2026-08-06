@@ -48,11 +48,13 @@ public:
     explicit RibbonPage(QWidget *parent = nullptr);
 
     RibbonGroup *addGroup(const QString &title);
-    void addStretch();
 
 private:
+    int groupCount() const;
+    QWidget *makeSeparator();
+    void insertBeforeStretch(QWidget *widget);
+
     QHBoxLayout *m_row = nullptr;
-    bool m_stretched = false;
 };
 
 /// Tab strip plus the command area below it.

@@ -120,29 +120,40 @@ RibbonPage::RibbonPage(QWidget *parent)
     m_row = new QHBoxLayout(this);
     m_row->setContentsMargins(8, 4, 8, 4);
     m_row->setSpacing(0);
+
+    // The trailing stretch is created up front and everything is inserted before
+    // it, so groups always start at the left edge however many there are.
+    m_row->addStretch(1);
 }
 
 RibbonGroup *RibbonPage::addGroup(const QString &title)
 {
-    if (m_row->count() > 0) {
-        auto *line = new QFrame(this);
-        line->setObjectName(QStringLiteral("RibbonGroupSeparator"));
-        line->setFrameShape(QFrame::NoFrame);
-        line->setFixedWidth(1);
-        m_row->addWidget(line);
-    }
+    if (groupCount() > 0)
+        insertBeforeStretch(makeSeparator());
 
     auto *group = new RibbonGroup(title, this);
-    m_row->addWidget(group);
+    insertBeforeStretch(group);
     return group;
 }
 
-void RibbonPage::addStretch()
+int RibbonPage::groupCount() const
 {
-    if (m_stretched)
-        return;
-    m_row->addStretch(1);
-    m_stretched = true;
+    // Everything except the trailing stretch.
+    return m_row->count() - 1;
+}
+
+QWidget *RibbonPage::makeSeparator()
+{
+    auto *line = new QFrame(this);
+    line->setObjectName(QStringLiteral("RibbonGroupSeparator"));
+    line->setFrameShape(QFrame::NoFrame);
+    line->setFixedWidth(1);
+    return line;
+}
+
+void RibbonPage::insertBeforeStretch(QWidget *widget)
+{
+    m_row->insertWidget(m_row->count() - 1, widget);
 }
 
 RibbonBar::RibbonBar(QWidget *parent)
@@ -192,7 +203,6 @@ RibbonBar::RibbonBar(QWidget *parent)
 RibbonPage *RibbonBar::addPage(const QString &title)
 {
     auto *page = new RibbonPage(m_pages);
-    page->addStretch();
     const int index = m_pages->addWidget(page);
 
     auto *tab = new QPushButton(title, this);
