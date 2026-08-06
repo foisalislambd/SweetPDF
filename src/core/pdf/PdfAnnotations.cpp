@@ -181,6 +181,18 @@ Annotation describe(fz_context *ctx, pdf_annot *annot, int pageIndex)
         fz_catch(ctx) {
             described.strokes.clear();
         }
+    } else if (described.type == AnnotationType::Line) {
+        fz_try(ctx) {
+            fz_point a{};
+            fz_point b{};
+            pdf_annot_line(ctx, annot, &a, &b);
+            described.lineStart = QPointF(a.x, a.y);
+            described.lineEnd = QPointF(b.x, b.y);
+        }
+        fz_catch(ctx) {
+            described.lineStart = {};
+            described.lineEnd = {};
+        }
     }
 
     return described;
@@ -313,11 +325,20 @@ int add(PdfDocument &document, const AnnotationSpec &spec)
                 const QPointF at = spec.rect.topLeft();
                 pdf_set_annot_rect(ctx, annot,
                                    toFzRect(QRectF(at, QSizeF(20, 20))));
+            } else if (spec.type == AnnotationType::Line) {
+                QPointF a = spec.lineStart;
+                QPointF b = spec.lineEnd;
+                if (!spec.hasLineEndpoints && !spec.rect.isEmpty()) {
+                    a = spec.rect.topLeft();
+                    b = spec.rect.bottomRight();
+                }
+                pdf_set_annot_line(ctx, annot, fz_make_point(float(a.x()), float(a.y())),
+                                   fz_make_point(float(b.x()), float(b.y())));
+                pdf_set_annot_border_width(ctx, annot, float(spec.borderWidth));
             } else {
                 if (!spec.rect.isEmpty())
                     pdf_set_annot_rect(ctx, annot, toFzRect(spec.rect));
-                if (spec.type == AnnotationType::Square || spec.type == AnnotationType::Circle
-                    || spec.type == AnnotationType::Line) {
+                if (spec.type == AnnotationType::Square || spec.type == AnnotationType::Circle) {
                     pdf_set_annot_border_width(ctx, annot, float(spec.borderWidth));
                     float interior[4] = { 0, 0, 0, 0 };
                     if (const int count = colorComponents(spec.interiorColor, interior))

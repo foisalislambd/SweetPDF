@@ -260,13 +260,19 @@ bool flatten(PdfDocument &document, bool annotationsToo, bool widgetsToo)
         return false;
 
     fz_context *ctx = MuContext::forThread();
-    const std::lock_guard<std::mutex> guard(document.parseMutex());
-    fz_try(ctx)
-        pdf_bake_document(ctx, pdf, annotationsToo ? 1 : 0, widgetsToo ? 1 : 0);
-    fz_catch(ctx) {
-        qCWarning(lcPdf) << "Could not flatten the document:" << MuContext::lastError(ctx);
-        return false;
+    {
+        const std::lock_guard<std::mutex> guard(document.parseMutex());
+        fz_try(ctx)
+            pdf_bake_document(ctx, pdf, annotationsToo ? 1 : 0, widgetsToo ? 1 : 0);
+        fz_catch(ctx) {
+            qCWarning(lcPdf) << "Could not flatten the document:" << MuContext::lastError(ctx);
+            return false;
+        }
     }
+
+    // Baked content replaces annotation appearances; drop every cached display
+    // list so the next render shows the baked page, not the old overlay.
+    document.discardPageCaches(-1);
     return true;
 }
 

@@ -53,8 +53,12 @@ PdfPage::PdfPage(fz_document *document, int index, std::mutex &parseMutex)
         page = fz_load_page(ctx, document, index);
         bounds = fz_bound_page(ctx, page);
     }
-    fz_catch(ctx)
+    fz_catch(ctx) {
+        // Load can succeed and bound can fail; drop the page before raising so
+        // we do not leak the fz_page that MuPDF already handed us.
+        fz_drop_page(ctx, page);
         MuContext::raise(ctx, QStringLiteral("Could not load page %1").arg(index + 1));
+    }
 
     m_page = page;
     m_bounds = bounds;
@@ -86,29 +90,30 @@ QSizeF PdfPage::sizePoints(int rotation) const
 fz_display_list *PdfPage::displayList(fz_context *ctx) const
 {
     const std::lock_guard<std::mutex> guard(*m_parseMutex);
-    if (m_displayList)
-        return m_displayList;
-
-    fz_display_list *list = nullptr;
-    fz_device *device = nullptr;
-    fz_var(list);
-    fz_var(device);
-    fz_try(ctx) {
-        list = fz_new_display_list(ctx, m_bounds);
-        device = fz_new_list_device(ctx, list);
-        fz_run_page(ctx, m_page, device, fz_identity, nullptr);
-        fz_close_device(ctx, device);
+    if (!m_displayList) {
+        fz_display_list *list = nullptr;
+        fz_device *device = nullptr;
+        fz_var(list);
+        fz_var(device);
+        fz_try(ctx) {
+            list = fz_new_display_list(ctx, m_bounds);
+            device = fz_new_list_device(ctx, list);
+            fz_run_page(ctx, m_page, device, fz_identity, nullptr);
+            fz_close_device(ctx, device);
+        }
+        fz_always(ctx)
+            fz_drop_device(ctx, device);
+        fz_catch(ctx) {
+            fz_drop_display_list(ctx, list);
+            MuContext::raise(ctx, QStringLiteral("Could not build the display list for page %1")
+                                      .arg(m_index + 1));
+        }
+        m_displayList = list;
     }
-    fz_always(ctx)
-        fz_drop_device(ctx, device);
-    fz_catch(ctx) {
-        fz_drop_display_list(ctx, list);
-        MuContext::raise(ctx, QStringLiteral("Could not build the display list for page %1")
-                                  .arg(m_index + 1));
-    }
 
-    m_displayList = list;
-    return m_displayList;
+    // Hand out a kept reference so callers can release the parse lock and still
+    // use the list while another thread may discardDisplayList() the cache.
+    return fz_keep_display_list(ctx, m_displayList);
 }
 
 QTransform PdfPage::pageToImage(const QSizeF &sizePoints, qreal scale, int rotation)
@@ -139,22 +144,30 @@ QImage PdfPage::render(qreal scale, int rotation) const
     fz_var(pixmap);
     fz_var(device);
     QImage image;
-    fz_try(ctx) {
-        pixmap = fz_new_pixmap_with_bbox(ctx, fz_device_bgr(ctx), bbox, nullptr, 1);
-        fz_clear_pixmap_with_value(ctx, pixmap, 0xff);
-        device = fz_new_draw_device(ctx, fz_identity, pixmap);
-        fz_run_display_list(ctx, list, device, ctm, fz_infinite_rect, nullptr);
-        fz_close_device(ctx, device);
-    }
-    fz_always(ctx)
-        fz_drop_device(ctx, device);
-    fz_catch(ctx) {
-        fz_drop_pixmap(ctx, pixmap);
-        MuContext::raise(ctx, QStringLiteral("Could not render page %1").arg(m_index + 1));
-    }
+    try {
+        fz_try(ctx) {
+            pixmap = fz_new_pixmap_with_bbox(ctx, fz_device_bgr(ctx), bbox, nullptr, 1);
+            fz_clear_pixmap_with_value(ctx, pixmap, 0xff);
+            device = fz_new_draw_device(ctx, fz_identity, pixmap);
+            fz_run_display_list(ctx, list, device, ctm, fz_infinite_rect, nullptr);
+            fz_close_device(ctx, device);
+        }
+        fz_always(ctx)
+            fz_drop_device(ctx, device);
+        fz_catch(ctx) {
+            fz_drop_pixmap(ctx, pixmap);
+            pixmap = nullptr;
+            MuContext::raise(ctx, QStringLiteral("Could not render page %1").arg(m_index + 1));
+        }
 
-    image = pixmapToImage(ctx, pixmap);
-    fz_drop_pixmap(ctx, pixmap);
+        image = pixmapToImage(ctx, pixmap);
+        fz_drop_pixmap(ctx, pixmap);
+        pixmap = nullptr;
+    } catch (...) {
+        fz_drop_display_list(ctx, list);
+        throw;
+    }
+    fz_drop_display_list(ctx, list);
     return image;
 }
 
@@ -165,26 +178,34 @@ QString PdfPage::text() const
 
     fz_stext_options options{};
     fz_stext_page *stext = nullptr;
-    fz_try(ctx)
-        stext = fz_new_stext_page_from_display_list(ctx, list, &options);
-    fz_catch(ctx)
-        MuContext::raise(ctx, QStringLiteral("Could not extract text from page %1").arg(m_index + 1));
-
+    fz_var(stext);
     QString result;
-    for (fz_stext_block *block = stext->first_block; block; block = block->next) {
-        if (block->type != FZ_STEXT_BLOCK_TEXT)
-            continue;
-        for (fz_stext_line *line = block->u.t.first_line; line; line = line->next) {
-            for (fz_stext_char *ch = line->first_char; ch; ch = ch->next) {
-                const char32_t codepoint = static_cast<char32_t>(ch->c);
-                result += QString::fromUcs4(&codepoint, 1);
+    try {
+        fz_try(ctx)
+            stext = fz_new_stext_page_from_display_list(ctx, list, &options);
+        fz_catch(ctx)
+            MuContext::raise(ctx,
+                             QStringLiteral("Could not extract text from page %1").arg(m_index + 1));
+
+        for (fz_stext_block *block = stext->first_block; block; block = block->next) {
+            if (block->type != FZ_STEXT_BLOCK_TEXT)
+                continue;
+            for (fz_stext_line *line = block->u.t.first_line; line; line = line->next) {
+                for (fz_stext_char *ch = line->first_char; ch; ch = ch->next) {
+                    const char32_t codepoint = static_cast<char32_t>(ch->c);
+                    result += QString::fromUcs4(&codepoint, 1);
+                }
+                result += u'\n';
             }
             result += u'\n';
         }
-        result += u'\n';
+    } catch (...) {
+        fz_drop_stext_page(ctx, stext);
+        fz_drop_display_list(ctx, list);
+        throw;
     }
-
     fz_drop_stext_page(ctx, stext);
+    fz_drop_display_list(ctx, list);
     return result;
 }
 
@@ -202,16 +223,22 @@ std::shared_ptr<const PageText> PdfPage::textLayer() const
     fz_stext_options options{};
     fz_stext_page *stext = nullptr;
     fz_var(stext);
-    fz_try(ctx)
-        stext = fz_new_stext_page_from_display_list(ctx, list, &options);
-    fz_catch(ctx) {
-        qCWarning(lcPdf) << "Could not extract text from page" << m_index + 1 << ":"
-                         << MuContext::lastError(ctx);
-        auto empty = std::make_shared<const PageText>(QString(), QList<QRectF>(),
-                                                      QList<TextRange>());
-        const std::lock_guard<std::mutex> guard(*m_parseMutex);
-        m_textLayer = empty;
-        return empty;
+    try {
+        fz_try(ctx)
+            stext = fz_new_stext_page_from_display_list(ctx, list, &options);
+        fz_catch(ctx) {
+            fz_drop_display_list(ctx, list);
+            qCWarning(lcPdf) << "Could not extract text from page" << m_index + 1 << ":"
+                             << MuContext::lastError(ctx);
+            auto empty = std::make_shared<const PageText>(QString(), QList<QRectF>(),
+                                                          QList<TextRange>());
+            const std::lock_guard<std::mutex> guard(*m_parseMutex);
+            m_textLayer = empty;
+            return empty;
+        }
+    } catch (...) {
+        fz_drop_display_list(ctx, list);
+        throw;
     }
 
     QString text;
@@ -245,6 +272,7 @@ std::shared_ptr<const PageText> PdfPage::textLayer() const
     }
 
     fz_drop_stext_page(ctx, stext);
+    fz_drop_display_list(ctx, list);
 
     auto built = std::make_shared<const PageText>(std::move(text), std::move(boxes),
                                                   std::move(lines));
@@ -267,6 +295,29 @@ void PdfPage::discardDisplayList()
         m_displayList = nullptr;
     }
     m_textLayer.reset();
+}
+
+void PdfPage::refreshBounds()
+{
+    const std::lock_guard<std::mutex> guard(*m_parseMutex);
+    fz_context *ctx = MuContext::forThread();
+    if (m_displayList) {
+        fz_drop_display_list(ctx, m_displayList);
+        m_displayList = nullptr;
+    }
+    m_textLayer.reset();
+
+    fz_rect bounds = fz_empty_rect;
+    fz_var(bounds);
+    fz_try(ctx)
+        bounds = fz_bound_page(ctx, m_page);
+    fz_catch(ctx) {
+        qCWarning(lcPdf) << "Could not refresh bounds for page" << m_index + 1 << ":"
+                         << MuContext::lastError(ctx);
+        return;
+    }
+    m_bounds = bounds;
+    m_sizePoints = sizeOf(bounds);
 }
 
 QList<QRectF> PdfPage::search(const QString &needle, int maxHits) const

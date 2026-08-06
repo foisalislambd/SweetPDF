@@ -17,6 +17,9 @@ AnnotationSpec specFrom(const Annotation &annotation)
     spec.rect = annotation.rect;
     spec.quads = annotation.quads;
     spec.strokes = annotation.strokes;
+    spec.lineStart = annotation.lineStart;
+    spec.lineEnd = annotation.lineEnd;
+    spec.hasLineEndpoints = annotation.type == AnnotationType::Line;
     spec.color = annotation.color;
     spec.opacity = annotation.opacity;
     spec.contents = annotation.contents;

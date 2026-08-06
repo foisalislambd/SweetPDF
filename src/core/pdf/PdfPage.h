@@ -59,6 +59,10 @@ public:
     /// Needed after annotations are added, removed or redacted.
     void discardDisplayList();
 
+    /// Re-reads the page box after an in-place edit that changes geometry
+    /// (for example /Rotate). Also drops the display list and text layer.
+    void refreshBounds();
+
     /// Boxes of every match, in unrotated page points.
     QList<QRectF> search(const QString &needle, int maxHits = 500) const;
 

@@ -68,6 +68,28 @@ struct SaveOptions
     DocumentPermissions permissions; ///< Only applied when encrypting.
 };
 
+/// Options for burning redaction annotations into page content.
+struct RedactOptions
+{
+    /// Paint black boxes over redacted areas. Usually false: the redaction
+    /// annotation already paints one while pending.
+    bool blackBoxes = false;
+
+    enum class ImageMethod {
+        Pixels, ///< Blank overlapping image pixels (keeps the image object).
+        Remove, ///< Drop images that touch the redaction region.
+        None,   ///< Leave images alone (insecure).
+    };
+    ImageMethod images = ImageMethod::Pixels;
+
+    enum class LineArt {
+        None,            ///< Leave vector art alone (insecure).
+        RemoveIfCovered, ///< Drop paths fully inside the redaction.
+        RemoveIfTouched, ///< Drop paths that intersect the redaction (default).
+    };
+    LineArt lineArt = LineArt::RemoveIfTouched;
+};
+
 /// An opened document. Pages are loaded lazily and shared, so a thumbnail and
 /// the main view can render the same page without loading it twice.
 ///
@@ -127,12 +149,20 @@ public:
     /// True when the file on disk no longer matches this document.
     bool hasUnsavedChanges() const;
 
+    /// True when MuPDF can append changes to the original file. False for
+    /// memory-backed documents, encryption changes, and after many structural
+    /// edits — callers must then do a full rewrite.
+    bool canSaveIncrementally() const;
+
     /// Serialises the document. Throws MuError on failure.
     QByteArray toBytes(const SaveOptions &options = {}) const;
 
     /// Writes the document to `path`. Incremental saving is only possible over
-    /// the file the document came from.
+    /// the file the document came from, and only when canSaveIncrementally().
     void saveToFile(const QString &path, const SaveOptions &options = {}) const;
+
+    /// Updates Info dictionary fields (title, author, …). Empty strings clear.
+    void setInfo(const DocumentInfo &info);
 
     int pageRotation(int index) const;
     void setPageRotation(int index, int degrees);
@@ -155,7 +185,11 @@ public:
 
     /// Burns pending redaction annotations into the page, removing the content
     /// underneath rather than covering it. Returns true when anything changed.
-    bool applyRedactions(int pageIndex);
+    bool applyRedactions(int pageIndex, const RedactOptions &options = {});
+
+    /// Drops cached display lists / text layers for one page, or every page when
+    /// `pageIndex` is negative. Does not load pages that were never requested.
+    void discardPageCaches(int pageIndex = -1);
 
     /// The MuPDF handles. For use inside `core/pdf` only: callers must hold
     /// parseMutex() and must not let these outlive the document.
@@ -177,6 +211,7 @@ private:
 
     pdf_document *requirePdf() const;
     void markEdited();
+    void updateCachedPageSize(int index);
 
     void readPageSizes();
     void readInfo();

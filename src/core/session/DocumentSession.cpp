@@ -91,10 +91,11 @@ bool DocumentSession::save(QString *errorMessage)
         return false;
     }
 
-    // Incremental where possible: it is much faster on a large file and leaves
-    // the original bytes, and any signatures over them, untouched.
+    // Incremental where MuPDF allows it: faster on large files and leaves
+    // original bytes (and signatures over them) untouched. Memory-backed or
+    // structurally rewritten documents must do a full save.
     SaveOptions options;
-    options.incremental = !m_document->isEncrypted();
+    options.incremental = m_document->canSaveIncrementally();
     return saveAs(m_filePath, options, false, errorMessage);
 }
 
@@ -467,6 +468,9 @@ void DocumentSession::setModified(bool modified)
 
 void DocumentSession::invalidatePage(int pageIndex)
 {
+    if (m_document)
+        m_document->discardPageCaches(pageIndex);
+
     if (pageIndex < 0)
         m_renderQueue->cache().clear();
     else

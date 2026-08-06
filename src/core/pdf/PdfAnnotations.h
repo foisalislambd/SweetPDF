@@ -43,6 +43,8 @@ struct Annotation
     QRectF rect;              ///< Bounding box in unrotated page points.
     QList<QRectF> quads;      ///< Text markup boxes, one per line.
     QList<QPolygonF> strokes; ///< Ink strokes, in page points.
+    QPointF lineStart;        ///< Line annotation start, in page points.
+    QPointF lineEnd;          ///< Line annotation end, in page points.
     QColor color;
     qreal opacity = 1.0;
     QString contents;        ///< Note body, or the text of a FreeText.
@@ -59,6 +61,9 @@ struct AnnotationSpec
     QRectF rect;                    ///< Square, Circle, Note, FreeText, Redact.
     QList<QRectF> quads;            ///< Text markup.
     QList<QPolygonF> strokes;       ///< Ink, in page points.
+    QPointF lineStart;              ///< Line endpoints (when type is Line).
+    QPointF lineEnd;
+    bool hasLineEndpoints = false;  ///< True when lineStart/lineEnd are set.
     QColor color = QColor(0xFF, 0xDD, 0x4A);
     QColor interiorColor;           ///< Fill for Square and Circle; invalid means none.
     qreal opacity = 1.0;

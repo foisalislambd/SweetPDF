@@ -236,13 +236,13 @@ void PdfDocument::readInfo()
     fz_context *ctx = MuContext::forThread();
     m_info.title = metadataValue(ctx, m_document, FZ_META_INFO_TITLE);
     m_info.author = metadataValue(ctx, m_document, FZ_META_INFO_AUTHOR);
-    m_info.subject = metadataValue(ctx, m_document, "info:Subject");
-    m_info.keywords = metadataValue(ctx, m_document, "info:Keywords");
-    m_info.creator = metadataValue(ctx, m_document, "info:Creator");
-    m_info.producer = metadataValue(ctx, m_document, "info:Producer");
+    m_info.subject = metadataValue(ctx, m_document, FZ_META_INFO_SUBJECT);
+    m_info.keywords = metadataValue(ctx, m_document, FZ_META_INFO_KEYWORDS);
+    m_info.creator = metadataValue(ctx, m_document, FZ_META_INFO_CREATOR);
+    m_info.producer = metadataValue(ctx, m_document, FZ_META_INFO_PRODUCER);
     m_info.format = metadataValue(ctx, m_document, FZ_META_FORMAT);
-    m_info.creationDate = metadataValue(ctx, m_document, "info:CreationDate");
-    m_info.modificationDate = metadataValue(ctx, m_document, "info:ModDate");
+    m_info.creationDate = metadataValue(ctx, m_document, FZ_META_INFO_CREATIONDATE);
+    m_info.modificationDate = metadataValue(ctx, m_document, FZ_META_INFO_MODIFICATIONDATE);
     m_info.fileSize = QFileInfo(m_filePath).size();
 }
 
@@ -389,6 +389,24 @@ bool PdfDocument::hasUnsavedChanges() const
     return pdf_has_unsaved_changes(MuContext::forThread(), m_pdf) != 0;
 }
 
+bool PdfDocument::canSaveIncrementally() const
+{
+    if (!m_pdf || m_filePath.isEmpty() || !m_backingBytes.isEmpty())
+        return false;
+    if (m_encrypted)
+        return false;
+
+    fz_context *ctx = MuContext::forThread();
+    const std::lock_guard<std::mutex> guard(m_parseMutex);
+    int ok = 0;
+    fz_var(ok);
+    fz_try(ctx)
+        ok = pdf_can_be_saved_incrementally(ctx, m_pdf);
+    fz_catch(ctx)
+        ok = 0;
+    return ok != 0;
+}
+
 QByteArray PdfDocument::toBytes(const SaveOptions &options) const
 {
     pdf_document *pdf = requirePdf();
@@ -408,8 +426,20 @@ void PdfDocument::saveToFile(const QString &path, const SaveOptions &options) co
     const std::lock_guard<std::mutex> guard(m_parseMutex);
 
     SaveOptions effective = options;
-    if (effective.incremental && path != m_filePath)
-        effective.incremental = false;
+    if (effective.incremental) {
+        if (path != m_filePath || !m_backingBytes.isEmpty() || m_encrypted) {
+            effective.incremental = false;
+        } else {
+            int ok = 0;
+            fz_var(ok);
+            fz_try(ctx)
+                ok = pdf_can_be_saved_incrementally(ctx, pdf);
+            fz_catch(ctx)
+                ok = 0;
+            if (ok == 0)
+                effective.incremental = false;
+        }
+    }
 
     const pdf_write_options write = toWriteOptions(effective);
     const QByteArray nativePath = QFile::encodeName(path);
@@ -418,6 +448,33 @@ void PdfDocument::saveToFile(const QString &path, const SaveOptions &options) co
         pdf_save_document(ctx, pdf, nativePath.constData(), &write);
     fz_catch(ctx)
         MuContext::raise(ctx, QStringLiteral("Could not save %1").arg(QFileInfo(path).fileName()));
+}
+
+void PdfDocument::setInfo(const DocumentInfo &info)
+{
+    requirePdf();
+    fz_context *ctx = MuContext::forThread();
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        auto setField = [&](const char *key, const QString &value) {
+            const QByteArray utf8 = value.toUtf8();
+            fz_set_metadata(ctx, m_document, key, utf8.constData());
+        };
+        fz_try(ctx) {
+            setField(FZ_META_INFO_TITLE, info.title);
+            setField(FZ_META_INFO_AUTHOR, info.author);
+            setField(FZ_META_INFO_SUBJECT, info.subject);
+            setField(FZ_META_INFO_KEYWORDS, info.keywords);
+            setField(FZ_META_INFO_CREATOR, info.creator);
+            setField(FZ_META_INFO_PRODUCER, info.producer);
+            setField(FZ_META_INFO_CREATIONDATE, info.creationDate);
+            setField(FZ_META_INFO_MODIFICATIONDATE, info.modificationDate);
+        }
+        fz_catch(ctx)
+            MuContext::raise(ctx, QStringLiteral("Could not update document metadata"));
+    }
+    markEdited();
+    readInfo();
 }
 
 int PdfDocument::pageRotation(int index) const
@@ -457,6 +514,15 @@ void PdfDocument::setPageRotation(int index, int degrees)
             MuContext::raise(ctx, QStringLiteral("Could not rotate page %1").arg(index + 1));
     }
     markEdited();
+
+    {
+        const std::lock_guard<std::mutex> guard(m_pageMutex);
+        if (index < m_pages.size()) {
+            if (auto cached = m_pages.at(index).lock())
+                cached->refreshBounds();
+        }
+    }
+    updateCachedPageSize(index);
 }
 
 void PdfDocument::deletePages(QList<int> indices)
@@ -675,7 +741,7 @@ void PdfDocument::appendPagesFrom(const QString &path, const QString &password)
     markEdited();
 }
 
-bool PdfDocument::applyRedactions(int pageIndex)
+bool PdfDocument::applyRedactions(int pageIndex, const RedactOptions &options)
 {
     pdf_document *pdf = requirePdf();
     if (pageIndex < 0 || pageIndex >= m_pageCount)
@@ -690,10 +756,32 @@ bool PdfDocument::applyRedactions(int pageIndex)
         fz_var(changed);
         fz_try(ctx) {
             page = pdf_load_page(ctx, pdf, pageIndex);
-            pdf_redact_options options{};
-            options.black_boxes = 0; // The redaction annotation already paints one.
-            options.image_method = PDF_REDACT_IMAGE_PIXELS;
-            changed = pdf_redact_page(ctx, pdf, page, &options) != 0;
+            pdf_redact_options redact{};
+            redact.black_boxes = options.blackBoxes ? 1 : 0;
+            switch (options.images) {
+            case RedactOptions::ImageMethod::None:
+                redact.image_method = PDF_REDACT_IMAGE_NONE;
+                break;
+            case RedactOptions::ImageMethod::Remove:
+                redact.image_method = PDF_REDACT_IMAGE_REMOVE;
+                break;
+            case RedactOptions::ImageMethod::Pixels:
+                redact.image_method = PDF_REDACT_IMAGE_PIXELS;
+                break;
+            }
+            switch (options.lineArt) {
+            case RedactOptions::LineArt::None:
+                redact.line_art = PDF_REDACT_LINE_ART_NONE;
+                break;
+            case RedactOptions::LineArt::RemoveIfCovered:
+                redact.line_art = PDF_REDACT_LINE_ART_REMOVE_IF_COVERED;
+                break;
+            case RedactOptions::LineArt::RemoveIfTouched:
+                redact.line_art = PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED;
+                break;
+            }
+            redact.text = PDF_REDACT_TEXT_REMOVE;
+            changed = pdf_redact_page(ctx, pdf, page, &redact) != 0;
         }
         fz_always(ctx)
             fz_drop_page(ctx, reinterpret_cast<fz_page *>(page));
@@ -702,9 +790,70 @@ bool PdfDocument::applyRedactions(int pageIndex)
                                       .arg(pageIndex + 1));
     }
 
-    if (changed)
+    if (changed) {
         markEdited();
+        discardPageCaches(pageIndex);
+    }
     return changed;
+}
+
+void PdfDocument::discardPageCaches(int pageIndex)
+{
+    const std::lock_guard<std::mutex> guard(m_pageMutex);
+    auto discard = [](const std::weak_ptr<PdfPage> &weak) {
+        if (auto page = weak.lock())
+            page->discardDisplayList();
+    };
+    if (pageIndex < 0) {
+        for (const auto &weak : m_pages)
+            discard(weak);
+        return;
+    }
+    if (pageIndex < m_pages.size())
+        discard(m_pages.at(pageIndex));
+}
+
+void PdfDocument::updateCachedPageSize(int index)
+{
+    if (index < 0 || index >= m_pageCount)
+        return;
+
+    QSizeF size;
+    {
+        const std::lock_guard<std::mutex> guard(m_pageMutex);
+        if (index < m_pages.size()) {
+            if (auto cached = m_pages.at(index).lock())
+                size = cached->sizePoints();
+        }
+    }
+    if (!size.isValid() || size.isEmpty()) {
+        fz_context *ctx = MuContext::forThread();
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_page *page = nullptr;
+        fz_rect bounds = fz_empty_rect;
+        fz_var(page);
+        fz_var(bounds);
+        fz_try(ctx) {
+            page = fz_load_page(ctx, m_document, index);
+            bounds = fz_bound_page(ctx, page);
+        }
+        fz_always(ctx)
+            fz_drop_page(ctx, page);
+        fz_catch(ctx)
+            bounds = fz_make_rect(0, 0, 612, 792);
+        size = sizeOf(bounds);
+    }
+
+    if (index < m_pageSizes.size())
+        m_pageSizes[index] = size;
+    else
+        m_pageSizes.append(size);
+
+    m_maxPageSize = QSizeF();
+    for (const QSizeF &pageSize : m_pageSizes) {
+        m_maxPageSize.setWidth(qMax(m_maxPageSize.width(), pageSize.width()));
+        m_maxPageSize.setHeight(qMax(m_maxPageSize.height(), pageSize.height()));
+    }
 }
 
 void PdfDocument::refreshStructure()
