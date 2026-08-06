@@ -1153,9 +1153,9 @@ bool MainWindow::openFile(const QString &path)
     });
     connect(view, &PageView::statusMessage, this, &MainWindow::report);
     connect(view, &PageView::textReplaceRequested, this,
-            [this, view](const QString &replacement) {
+            [this, view](const QString &replacement, int pageIndex, const QList<QRectF> &boxes) {
                 if (view == currentView())
-                    replaceSelectedTextWith(replacement);
+                    replaceSelectedTextWith(replacement, pageIndex, boxes);
             });
 
     const int index = m_tabs->addTab(page, session->displayName());
@@ -2387,23 +2387,30 @@ void MainWindow::replaceSelectedText()
     if (!accepted)
         return;
 
-    replaceSelectedTextWith(replacement);
+    replaceSelectedTextWith(replacement, view->selectionPage(), view->selectionBoxes());
 }
 
 void MainWindow::replaceSelectedTextWith(const QString &replacement)
+{
+    PageView *view = currentView();
+    if (!view)
+        return;
+    replaceSelectedTextWith(replacement, view->selectionPage(), view->selectionBoxes());
+}
+
+void MainWindow::replaceSelectedTextWith(const QString &replacement, int pageIndex,
+                                         const QList<QRectF> &boxes)
 {
     auto *session = currentSession();
     PageView *view = currentView();
     if (!session || !view || !requireEditableDocument(true))
         return;
 
-    const QList<QRectF> boxes = view->selectionBoxes();
-    if (boxes.isEmpty()) {
+    if (pageIndex < 0 || boxes.isEmpty()) {
         report(tr("Click the text you want to change, or drag across it."));
         return;
     }
 
-    const int pageIndex = view->selectionPage();
     QRectF area = boxes.first();
     for (const QRectF &box : boxes)
         area = area.united(box);
@@ -2434,18 +2441,26 @@ void MainWindow::replaceSelectedTextWith(const QString &replacement)
         return;
     }
 
-    if (!replacement.isEmpty()) {
+    if (!replacement.trimmed().isEmpty()) {
         core::AnnotationSpec spec;
         spec.type = core::AnnotationType::FreeText;
         spec.pageIndex = pageIndex;
         // Sit the new text where the old text sat, at roughly its size.
         spec.rect = area.adjusted(-1, -1, 12, 1);
+        if (spec.rect.height() < 10)
+            spec.rect.setHeight(10);
         spec.contents = replacement;
         spec.fontSize = qBound(6.0, area.height() * 0.82, 48.0);
         spec.color = Qt::black;
+        spec.borderWidth = 0.0;
         spec.opacity = 1.0;
         spec.author = session->author();
-        session->addAnnotation(spec, tr("Type replacement"));
+        if (!session->addAnnotation(spec, tr("Type replacement"))) {
+            session->undoStack()->endMacro();
+            reportError(tr("Could not replace the text"),
+                        tr("The old text was removed, but the new text could not be written."));
+            return;
+        }
     }
 
     session->undoStack()->endMacro();

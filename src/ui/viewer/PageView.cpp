@@ -914,7 +914,9 @@ QRect PageView::selectionViewportRect() const
 
 void PageView::startInlineTextEdit()
 {
-    cancelInlineTextEdit();
+    // A second edit request must keep the previous replacement, not throw it away.
+    if (m_inlineEdit)
+        commitInlineTextEdit();
     if (!hasSelection())
         return;
 
@@ -963,11 +965,16 @@ void PageView::commitInlineTextEdit()
         return;
 
     const QString replacement = m_inlineEdit->toPlainText();
-    // Detach first so a nested focus change cannot re-enter cancel.
+    const int pageIndex = m_selectionPage;
+    const QList<QRectF> boxes = selectionBoxes();
+    // Detach first so a nested focus change cannot re-enter cancel/commit.
     QPlainTextEdit *editor = m_inlineEdit;
     m_inlineEdit = nullptr;
     editor->deleteLater();
-    Q_EMIT textReplaceRequested(replacement);
+
+    if (pageIndex < 0 || boxes.isEmpty())
+        return;
+    Q_EMIT textReplaceRequested(replacement, pageIndex, boxes);
 }
 
 void PageView::cancelInlineTextEdit()
@@ -1153,7 +1160,13 @@ void PageView::mousePressEvent(QMouseEvent *event)
 
             switch (tool) {
             case core::Tool::EditText: {
-                cancelInlineTextEdit();
+                // Commit first: cancel-on-press was throwing away typed text when
+                // the user clicked away to finish editing.
+                if (m_inlineEdit) {
+                    commitInlineTextEdit();
+                    event->accept();
+                    return;
+                }
                 if (auto text = textOf(pageIndex)) {
                     bool hitText = false;
                     m_selectionAnchor = text->indexAt(pagePoint, &hitText);

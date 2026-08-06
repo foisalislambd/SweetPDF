@@ -349,6 +349,8 @@ int add(PdfDocument &document, const AnnotationSpec &spec)
                     const int count = colorComponents(spec.color, text);
                     pdf_set_annot_default_appearance(ctx, annot, "Helv", float(spec.fontSize),
                                                      count, text);
+                    // Replacement text should look like page content, not a boxed note.
+                    pdf_set_annot_border_width(ctx, annot, float(qMax(0.0, spec.borderWidth)));
                 }
             }
 

@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QHash>
+#include <QList>
 #include <QMainWindow>
+#include <QRectF>
 #include <QStringList>
 
 #include <functional>
@@ -78,6 +80,8 @@ public Q_SLOTS:
     void signDocument();
     void replaceSelectedText();
     void replaceSelectedTextWith(const QString &replacement);
+    void replaceSelectedTextWith(const QString &replacement, int pageIndex,
+                                 const QList<QRectF> &boxes);
 
     // --- Tools -----------------------------------------------------------
     void compressDocument();

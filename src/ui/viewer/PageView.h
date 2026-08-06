@@ -107,8 +107,10 @@ Q_SIGNALS:
     /// itself; this signal remains for listeners that want to know.
     void textEditRequested();
 
-    /// The inline editor committed a replacement for the current selection.
-    void textReplaceRequested(const QString &replacement);
+    /// The inline editor committed a replacement. `boxes` are captured at commit
+    /// time so a click that dismisses the editor cannot clear the selection first.
+    void textReplaceRequested(const QString &replacement, int pageIndex,
+                              const QList<QRectF> &boxes);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
