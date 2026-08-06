@@ -32,9 +32,11 @@ computer: no account, no upload, no subscription.
 [Architecture](#architecture) · [Releases and CI](#releases-and-ci) ·
 [Roadmap](#roadmap) · [Contributing](#contributing) · [License](#license)
 
-**Project documents** — [Contributing guide](CONTRIBUTING.md) ·
-[Changelog](CHANGELOG.md) · [Security policy](SECURITY.md) ·
-[Code of conduct](CODE_OF_CONDUCT.md)
+**Project documents** — [Docs index](docs/README.md) ·
+[User guide](docs/user-guide.md) · [Building](docs/building.md) ·
+[Architecture](docs/architecture.md) · [Development](docs/development.md) ·
+[Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) ·
+[Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
 
 ## Install
 
