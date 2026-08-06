@@ -7,7 +7,7 @@ body:
       value: |
         Thanks for the report. If this is a **security** problem - a document
         that crashes SweetPDF or reads memory it should not - please use
-        [private reporting](https://github.com/sweetpdf/sweetpdf/security/advisories/new)
+        [private reporting](https://github.com/foisalislambd/sweetPDF/security/advisories/new)
         instead of this form.
 
   - type: textarea

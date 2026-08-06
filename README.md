@@ -31,7 +31,7 @@ The SweetPDF home screen
 ## Install
 
 Grab the newest build from the [releases
-page](https://github.com/sweetpdf/sweetpdf/releases). Every release lists a
+page](https://github.com/foisalislambd/sweetPDF/releases). Every release lists a
 `SHA256SUMS` file if you want to check your download.
 
 
@@ -457,7 +457,7 @@ style, and what review looks for. In short: keep `core` free of widget
 dependencies, build with `SWEETPDF_WARNINGS_AS_ERRORS=ON`, make document changes
 undoable, and match the surrounding style.
 
-- Found a bug? [Report it](https://github.com/sweetpdf/sweetpdf/issues/new/choose)
+- Found a bug? [Report it](https://github.com/foisalislambd/sweetPDF/issues/new/choose)
 — please attach the document if you can share it.
 - Found a security problem? Follow the [security policy](SECURITY.md) and report
 it privately rather than in an issue.

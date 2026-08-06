@@ -11,7 +11,7 @@ By contributing you agree that your work is licensed under the
 ## Ways to help
 
 - **Report a bug.** Use the [bug report
-  form](https://github.com/sweetpdf/sweetpdf/issues/new?template=bug_report.yml).
+  form](https://github.com/foisalislambd/sweetPDF/issues/new?template=bug_report.yml).
   A document that reproduces the problem is worth more than any description, so
   attach one when you can share it.
 - **Suggest a feature.** Check the roadmap in the [README](README.md#roadmap)
@@ -126,7 +126,7 @@ CI](README.md#releases-and-ci).
 ## Questions
 
 Open a [discussion or an
-issue](https://github.com/sweetpdf/sweetpdf/issues/new/choose). Uncertainty
+issue](https://github.com/foisalislambd/sweetPDF/issues/new/choose). Uncertainty
 about the right approach is a good reason to ask before writing code, not after.
 
 Everyone taking part is expected to follow the

@@ -1,11 +1,11 @@
 blank_issues_enabled: true
 contact_links:
   - name: Security problem
-    url: https://github.com/sweetpdf/sweetpdf/security/advisories/new
+    url: https://github.com/foisalislambd/sweetPDF/security/advisories/new
     about: Report a crash or memory-safety issue triggered by a document privately.
   - name: Question about using SweetPDF
-    url: https://github.com/sweetpdf/sweetpdf#how-do-i
+    url: https://github.com/foisalislambd/sweetPDF#how-do-i
     about: The README has a task-by-task guide and a list of common questions.
   - name: Building from source
-    url: https://github.com/sweetpdf/sweetpdf/blob/main/CONTRIBUTING.md
+    url: https://github.com/foisalislambd/sweetPDF/blob/main/CONTRIBUTING.md
     about: Dependencies per platform, the test binaries, and what review looks for.

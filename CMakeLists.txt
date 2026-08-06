@@ -8,7 +8,7 @@ set(SWEETPDF_VERSION "0.0.0" CACHE STRING "Version to stamp into the build")
 project(SweetPDF
     VERSION ${SWEETPDF_VERSION}
     DESCRIPTION "All-in-one open source PDF editor"
-    HOMEPAGE_URL "https://github.com/sweetpdf/sweetpdf"
+    HOMEPAGE_URL "https://github.com/foisalislambd/sweetPDF"
     LANGUAGES CXX
 )
 

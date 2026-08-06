@@ -20,7 +20,7 @@ being backported, and releases are frequent because they are automated.
 reporting instead:
 
 1. Go to [Report a
-   vulnerability](https://github.com/sweetpdf/sweetpdf/security/advisories/new).
+   vulnerability](https://github.com/foisalislambd/sweetPDF/security/advisories/new).
 2. Describe what happens and what you think the impact is.
 3. Attach the document that triggers it, or a script that generates one. A
    reproducer is the single most useful thing in the report.
@@ -50,7 +50,7 @@ would rather stay anonymous.
   so we can add a workaround or bump the requirement.
 - A document that renders incorrectly, or a feature that is missing. Those are
   ordinary bugs — please use the [issue
-  tracker](https://github.com/sweetpdf/sweetpdf/issues).
+  tracker](https://github.com/foisalislambd/sweetPDF/issues).
 - Weak protection that the PDF format itself provides. Permission flags such as
   "printing not allowed" are advisory in every PDF reader, and a document
   encrypted with an old algorithm stays weak; neither is a flaw in SweetPDF.

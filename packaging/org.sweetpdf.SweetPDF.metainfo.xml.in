@@ -48,10 +48,10 @@
     <keyword>sign</keyword>
   </keywords>
 
-  <url type="homepage">https://github.com/sweetpdf/sweetpdf</url>
-  <url type="bugtracker">https://github.com/sweetpdf/sweetpdf/issues</url>
-  <url type="help">https://github.com/sweetpdf/sweetpdf#how-do-i</url>
-  <url type="vcs-browser">https://github.com/sweetpdf/sweetpdf</url>
+  <url type="homepage">https://github.com/foisalislambd/sweetPDF</url>
+  <url type="bugtracker">https://github.com/foisalislambd/sweetPDF/issues</url>
+  <url type="help">https://github.com/foisalislambd/sweetPDF#how-do-i</url>
+  <url type="vcs-browser">https://github.com/foisalislambd/sweetPDF</url>
 
   <developer id="org.sweetpdf">
     <name>SweetPDF contributors</name>
@@ -71,15 +71,15 @@
   <screenshots>
     <screenshot type="default">
       <caption>The home screen with tasks and recent documents</caption>
-      <image>https://raw.githubusercontent.com/sweetpdf/sweetpdf/main/docs/screenshots/home.png</image>
+      <image>https://raw.githubusercontent.com/foisalislambd/sweetPDF/main/docs/screenshots/home.png</image>
     </screenshot>
     <screenshot>
       <caption>A document open with thumbnails and properties</caption>
-      <image>https://raw.githubusercontent.com/sweetpdf/sweetpdf/main/docs/screenshots/viewer-light.png</image>
+      <image>https://raw.githubusercontent.com/foisalislambd/sweetPDF/main/docs/screenshots/viewer-light.png</image>
     </screenshot>
     <screenshot>
       <caption>The dark theme</caption>
-      <image>https://raw.githubusercontent.com/sweetpdf/sweetpdf/main/docs/screenshots/home-dark.png</image>
+      <image>https://raw.githubusercontent.com/foisalislambd/sweetPDF/main/docs/screenshots/home-dark.png</image>
     </screenshot>
   </screenshots>
 
@@ -90,7 +90,7 @@
   <!-- Filled in from the version being built; see src/app/CMakeLists.txt. -->
   <releases>
     <release version="@PROJECT_VERSION@" date="@SWEETPDF_BUILD_DATE@">
-      <url type="details">https://github.com/sweetpdf/sweetpdf/releases/tag/v@PROJECT_VERSION@</url>
+      <url type="details">https://github.com/foisalislambd/sweetPDF/releases/tag/v@PROJECT_VERSION@</url>
     </release>
   </releases>
 </component>

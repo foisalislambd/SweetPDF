@@ -60,7 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement by opening a
-[private report](https://github.com/sweetpdf/sweetpdf/security/advisories/new) or
+[private report](https://github.com/foisalislambd/sweetPDF/security/advisories/new) or
 by contacting a maintainer directly through GitHub. All complaints will be
 reviewed and investigated promptly and fairly.
 
