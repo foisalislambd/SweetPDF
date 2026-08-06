@@ -35,7 +35,10 @@ PageView::PageView(core::DocumentSession *session, QWidget *parent)
     // from the ribbon or the status bar, not just the wheel.
     setTransformationAnchor(QGraphicsView::NoAnchor);
     setResizeAnchor(QGraphicsView::NoAnchor);
-    setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
+    // Zoom moves both the transform and the scroll offsets in one step, which
+    // smart updates cannot reason about and leave torn. Only a few large items
+    // are ever visible, so repainting the whole viewport is cheap enough.
+    setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
     setAlignment(Qt::AlignHCenter | Qt::AlignTop);
     setDragMode(QGraphicsView::NoDrag);
     setFocusPolicy(Qt::StrongFocus);
@@ -175,6 +178,7 @@ void PageView::applyZoom()
     verticalScrollBar()->setValue(verticalScrollBar()->value() + delta.y());
 
     m_zoomAnchorValid = false;
+    viewport()->update();
 }
 
 void PageView::applyTool()

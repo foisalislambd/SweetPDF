@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="chrome" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4E8BFF"/>
+      <stop offset="1" stop-color="#1B4CD4"/>
+    </linearGradient>
+    <linearGradient id="sheet" x1="0.2" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E8EEFB"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#chrome)"/>
+
+  <!-- A sheet with a folded corner: the document, not a generic file card. -->
+  <path d="M78 54h68l40 40v108a12 12 0 0 1-12 12H90a12 12 0 0 1-12-12V66a12 12 0 0 1 12-12Z"
+        fill="url(#sheet)"/>
+  <path d="M146 54v28a12 12 0 0 0 12 12h28Z" fill="#B9CDF6"/>
+
+  <!-- P for PDF, drawn as a stroke so it stays crisp at small sizes. -->
+  <path d="M108 178v-58h22a19 19 0 0 1 0 38h-22" fill="none" stroke="#1B4CD4"
+        stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

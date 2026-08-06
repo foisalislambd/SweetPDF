@@ -3,7 +3,7 @@
 
 #include <QApplication>
 #include <QCommandLineParser>
-#include <QFont>
+#include <QIcon>
 #include <QStyleFactory>
 
 int main(int argc, char *argv[])
@@ -15,17 +15,13 @@ int main(int argc, char *argv[])
     QApplication::setOrganizationName(QStringLiteral("SweetPDF"));
     QApplication::setOrganizationDomain(QStringLiteral("sweetpdf.org"));
     QApplication::setDesktopFileName(QStringLiteral("org.sweetpdf.SweetPDF"));
+    QApplication::setWindowIcon(
+        QIcon(QStringLiteral(":/icons/org.sweetpdf.SweetPDF.svg")));
 
     // Fusion is the one style available on every platform, which keeps the
     // stylesheet predictable instead of fighting each platform's native style.
     if (QStyleFactory::keys().contains(QStringLiteral("Fusion"), Qt::CaseInsensitive))
         QApplication::setStyle(QStringLiteral("Fusion"));
-
-    QFont uiFont = QApplication::font();
-    if (uiFont.pointSizeF() > 0)
-        uiFont.setPointSizeF(qMax(9.5, uiFont.pointSizeF()));
-    uiFont.setHintingPreference(QFont::PreferFullHinting);
-    QApplication::setFont(uiFont);
 
     QCommandLineParser parser;
     parser.setApplicationDescription(

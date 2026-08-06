@@ -89,6 +89,19 @@ int main(int argc, char *argv[])
     window.show();
     spin(200);
 
+    // The welcome screen is a screen like any other, so it can be reviewed the
+    // same way instead of only being seen on a fresh install.
+    if (arguments.contains(QStringLiteral("--welcome"))) {
+        if (!screenshotPath.isEmpty()) {
+            const QPixmap shot = window.grab();
+            if (shot.isNull() || !shot.save(screenshotPath))
+                return fail("could not save the screenshot");
+            std::printf("smoke: welcome screenshot written to %s\n",
+                        qUtf8Printable(screenshotPath));
+        }
+        return 0;
+    }
+
     if (!window.openFile(documentPath))
         return fail("MainWindow could not open the document");
 

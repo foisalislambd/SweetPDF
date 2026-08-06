@@ -26,10 +26,24 @@ MuPDF is AGPL-3.0, so SweetPDF is AGPL-3.0 as well.
 
 ```
 src/
-  core/   Document model and rendering. Qt Core/Gui only, no widgets.
-  ui/     Everything visual: theme, ribbon, canvas, panels, main window.
-  app/    main() and platform packaging.
+  core/           Document model and rendering. Qt Core/Gui only, no widgets.
+    pdf/          The MuPDF boundary: documents, pages, rasterising, text
+    render/       Bitmap cache and worker queue
+    session/      Per-document state and undo history
+    util/         Logging categories
+  ui/             Everything visual
+    theme/        Colour, typography, icons, stylesheet
+    ribbon/       The command surface
+    viewer/       Page canvas and floating controls
+    panels/       Sidebar, thumbnails, outline, properties
+    window/       Main window, welcome screen
+  app/            main() and platform packaging
+resources/        Application icon
 ```
+
+Each module has its own guide: [`src/core/README.md`](src/core/README.md) and
+[`src/ui/README.md`](src/ui/README.md) explain what belongs in each folder, the
+rules that keep the boundaries intact, and how a page reaches the screen.
 
 The rules that keep this honest:
 

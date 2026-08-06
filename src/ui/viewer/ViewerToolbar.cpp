@@ -25,9 +25,13 @@ ViewerToolbar::ViewerToolbar(PageView *view)
 {
     setObjectName(QStringLiteral("FloatingBar"));
     setAttribute(Qt::WA_StyledBackground, true);
+    // Lifts the bar off the page instead of letting it look pasted on.
+    Theme::setElevation(this, Elevation::High);
+    connect(&Theme::instance(), &Theme::changed, this,
+            [this] { Theme::setElevation(this, Elevation::High); });
 
     auto *row = new QHBoxLayout(this);
-    row->setContentsMargins(8, 6, 8, 6);
+    row->setContentsMargins(9, 6, 9, 6);
     row->setSpacing(2);
 
     auto *session = view->session();
@@ -69,7 +73,10 @@ ViewerToolbar::ViewerToolbar(PageView *view)
         if (value.isValid())
             m_view->zoomTo(value.toDouble());
     });
-    connect(m_zoomBox->lineEdit(), &QLineEdit::editingFinished, this, [this] {
+    // Committing on Enter only. editingFinished also fires when the box loses
+    // focus, which would turn a value this toolbar wrote itself into a manual
+    // zoom and quietly cancel fit-width.
+    connect(m_zoomBox->lineEdit(), &QLineEdit::returnPressed, this, [this] {
         if (m_syncingZoom)
             return;
         QString text = m_zoomBox->currentText();
@@ -155,6 +162,7 @@ QToolButton *ViewerToolbar::addButton(const QString &iconName, const QString &to
 void ViewerToolbar::syncZoomBox(qreal zoom)
 {
     m_syncingZoom = true;
+    const QSignalBlocker blocker(m_zoomBox);
     m_zoomBox->setCurrentText(QStringLiteral("%1%").arg(qRound(zoom * 100)));
     m_syncingZoom = false;
 }

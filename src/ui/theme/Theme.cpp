@@ -302,7 +302,10 @@ QString Theme::styleSheet() const
     static const QString sheet = QStringLiteral(R"(
 * { outline: none; }
 
-QWidget { color: {text}; font-family: "{fontFamily}"; font-size: {fontBody}pt; }
+/* No font-size here: a size on the universal selector would beat every
+   widget-level setFont, which is how the type scale in Theme::font is applied.
+   The base size comes from QApplication::setFont instead. */
+QWidget { color: {text}; font-family: "{fontFamily}"; }
 QMainWindow, QDialog { background: {window}; }
 
 QToolTip {
