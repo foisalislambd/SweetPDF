@@ -7,6 +7,7 @@
 #include <QEvent>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPushButton>
@@ -18,9 +19,9 @@
 namespace sweet::ui {
 namespace {
 
-constexpr int largeIconSize = 20;
+constexpr int largeIconSize = 22;
 constexpr int compactIconSize = 16;
-constexpr int largeCellWidth = 54;
+constexpr int largeCellWidth = 56;
 
 QToolButton *makeButton(QAction *action, bool large)
 {
@@ -30,19 +31,23 @@ QToolButton *makeButton(QAction *action, bool large)
     button->setFocusPolicy(Qt::TabFocus);
     button->setCursor(Qt::ArrowCursor);
     button->setAutoRaise(true);
+    // Prefer the short ribbon caption (iconText) when set; menus keep the full text.
+    const QString caption =
+        action->iconText().isEmpty() || action->iconText() == action->text()
+            ? action->text()
+            : action->iconText();
+    button->setText(caption);
     if (action->toolTip().isEmpty())
         button->setToolTip(action->text());
 
     if (large) {
-        // Acrobat-style tool cell: glyph above a short caption, fixed footprint.
         button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
         button->setIconSize(QSize(largeIconSize, largeIconSize));
-        const int textWidth = button->fontMetrics().horizontalAdvance(action->text());
-        button->setMinimumWidth(qMax(largeCellWidth, textWidth + 10));
-        button->setMinimumHeight(56);
+        const int textWidth = button->fontMetrics().horizontalAdvance(caption);
+        button->setMinimumWidth(qMax(largeCellWidth, textWidth + 12));
+        button->setMinimumHeight(58);
         button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     } else {
-        // Secondary commands pack beside a large cell without stretching the ribbon.
         button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         button->setIconSize(QSize(compactIconSize, compactIconSize));
         button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
@@ -59,7 +64,7 @@ QFrame *makeGroupSeparator(QWidget *parent)
     line->setObjectName(QStringLiteral("RibbonGroupSeparator"));
     line->setFrameShape(QFrame::NoFrame);
     line->setFixedWidth(1);
-    line->setMinimumHeight(48);
+    line->setMinimumHeight(56);
     line->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
     return line;
 }
@@ -69,15 +74,26 @@ QFrame *makeGroupSeparator(QWidget *parent)
 RibbonGroup::RibbonGroup(const QString &title, QWidget *parent)
     : QWidget(parent)
 {
-    // Title stays for accessibility / translators, but is not drawn — Adobe
-    // clusters tools with separators, not "File" / "History" captions.
     if (!title.isEmpty())
         setAccessibleName(title);
 
-    m_row = new QHBoxLayout(this);
-    m_row->setContentsMargins(4, 4, 4, 4);
+    auto *column = new QVBoxLayout(this);
+    column->setContentsMargins(6, 4, 6, 2);
+    column->setSpacing(2);
+
+    auto *content = new QWidget(this);
+    m_row = new QHBoxLayout(content);
+    m_row->setContentsMargins(0, 0, 0, 0);
     m_row->setSpacing(2);
-    m_row->setAlignment(Qt::AlignVCenter);
+    m_row->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+    column->addWidget(content, 1);
+
+    // Small section caption under the tools — the main cue for what each cluster does.
+    auto *label = new QLabel(title, this);
+    label->setObjectName(QStringLiteral("RibbonGroupTitle"));
+    label->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+    label->setVisible(!title.isEmpty());
+    column->addWidget(label);
 }
 
 QToolButton *RibbonGroup::addAction(QAction *action)

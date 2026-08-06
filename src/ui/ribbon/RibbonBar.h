@@ -12,10 +12,10 @@ class QVBoxLayout;
 
 namespace sweet::ui {
 
-/// A cluster of related commands inside a ribbon page.
+/// A labelled cluster of related commands inside a ribbon page.
 ///
-/// `title` is kept for accessibility only; group captions are not shown so the
-/// ribbon stays compact.
+/// The section caption under the tools (File, Markup, …) is what makes the
+/// header scannable; individual commands still show their own short names.
 class RibbonGroup : public QWidget
 {
     Q_OBJECT

@@ -559,6 +559,37 @@ void MainWindow::createActions()
         setWindowState(on ? windowState() | Qt::WindowFullScreen
                           : windowState() & ~Qt::WindowFullScreen);
     });
+
+    // Short captions for the ribbon cells. Menus and tooltips keep the full text;
+    // long names like "Rotate Page Left" are hard to scan under an icon.
+    const auto shortCaption = [this](const QString &id, const QString &caption) {
+        if (QAction *entry = action(id))
+            entry->setIconText(caption);
+    };
+    shortCaption(QStringLiteral("toolStrikeout"), tr("Strike"));
+    shortCaption(QStringLiteral("toolHighlight"), tr("Highlight"));
+    shortCaption(QStringLiteral("toolUnderline"), tr("Underline"));
+    shortCaption(QStringLiteral("addText"), tr("Text"));
+    shortCaption(QStringLiteral("toolEditText"), tr("Edit"));
+    shortCaption(QStringLiteral("toolRedact"), tr("Redact"));
+    shortCaption(QStringLiteral("applyRedactions"), tr("Apply"));
+    shortCaption(QStringLiteral("rotatePagesLeft"), tr("Left"));
+    shortCaption(QStringLiteral("rotatePagesRight"), tr("Right"));
+    shortCaption(QStringLiteral("rotateLeft"), tr("Left"));
+    shortCaption(QStringLiteral("rotateRight"), tr("Right"));
+    shortCaption(QStringLiteral("editImage"), tr("Replace"));
+    shortCaption(QStringLiteral("addImage"), tr("Image"));
+    shortCaption(QStringLiteral("exportText"), tr("Text"));
+    shortCaption(QStringLiteral("exportImages"), tr("Images"));
+    shortCaption(QStringLiteral("forms"), tr("Forms"));
+    shortCaption(QStringLiteral("layoutSingle"), tr("Single"));
+    shortCaption(QStringLiteral("layoutContinuous"), tr("Scroll"));
+    shortCaption(QStringLiteral("layoutTwoPage"), tr("Two"));
+    shortCaption(QStringLiteral("fitPage"), tr("Page"));
+    shortCaption(QStringLiteral("fitWidth"), tr("Width"));
+    shortCaption(QStringLiteral("toggleSidebar"), tr("Nav"));
+    shortCaption(QStringLiteral("toggleProperties"), tr("Props"));
+    shortCaption(QStringLiteral("actualSize"), tr("100%"));
 }
 
 // --- Menus -----------------------------------------------------------------
