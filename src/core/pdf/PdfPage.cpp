@@ -188,6 +188,87 @@ QString PdfPage::text() const
     return result;
 }
 
+std::shared_ptr<const PageText> PdfPage::textLayer() const
+{
+    {
+        const std::lock_guard<std::mutex> guard(*m_parseMutex);
+        if (m_textLayer)
+            return m_textLayer;
+    }
+
+    fz_context *ctx = MuContext::forThread();
+    fz_display_list *list = displayList(ctx);
+
+    fz_stext_options options{};
+    fz_stext_page *stext = nullptr;
+    fz_var(stext);
+    fz_try(ctx)
+        stext = fz_new_stext_page_from_display_list(ctx, list, &options);
+    fz_catch(ctx) {
+        qCWarning(lcPdf) << "Could not extract text from page" << m_index + 1 << ":"
+                         << MuContext::lastError(ctx);
+        auto empty = std::make_shared<const PageText>(QString(), QList<QRectF>(),
+                                                      QList<TextRange>());
+        const std::lock_guard<std::mutex> guard(*m_parseMutex);
+        m_textLayer = empty;
+        return empty;
+    }
+
+    QString text;
+    QList<QRectF> boxes;
+    QList<TextRange> lines;
+
+    for (fz_stext_block *block = stext->first_block; block; block = block->next) {
+        if (block->type != FZ_STEXT_BLOCK_TEXT)
+            continue;
+
+        for (fz_stext_line *line = block->u.t.first_line; line; line = line->next) {
+            const int lineStart = int(text.size());
+            for (fz_stext_char *character = line->first_char; character;
+                 character = character->next) {
+                const char32_t codepoint = static_cast<char32_t>(character->c);
+                const QString glyph = QString::fromUcs4(&codepoint, 1);
+                const QRectF box = toQRectF(character->quad);
+                // A codepoint outside the BMP becomes a surrogate pair, so every
+                // unit of it shares the glyph box and indices stay aligned.
+                for (int unit = 0; unit < glyph.size(); ++unit)
+                    boxes.append(box);
+                text += glyph;
+            }
+
+            if (int(text.size()) > lineStart) {
+                lines.append({ lineStart, int(text.size()) });
+                text += u'\n';
+                boxes.append(QRectF());
+            }
+        }
+    }
+
+    fz_drop_stext_page(ctx, stext);
+
+    auto built = std::make_shared<const PageText>(std::move(text), std::move(boxes),
+                                                  std::move(lines));
+    const std::lock_guard<std::mutex> guard(*m_parseMutex);
+    m_textLayer = built;
+    return built;
+}
+
+void PdfPage::discardTextLayer()
+{
+    const std::lock_guard<std::mutex> guard(*m_parseMutex);
+    m_textLayer.reset();
+}
+
+void PdfPage::discardDisplayList()
+{
+    const std::lock_guard<std::mutex> guard(*m_parseMutex);
+    if (m_displayList) {
+        fz_drop_display_list(MuContext::forThread(), m_displayList);
+        m_displayList = nullptr;
+    }
+    m_textLayer.reset();
+}
+
 QList<QRectF> PdfPage::search(const QString &needle, int maxHits) const
 {
     if (needle.isEmpty() || maxHits <= 0)

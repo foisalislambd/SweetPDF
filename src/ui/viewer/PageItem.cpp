@@ -60,6 +60,44 @@ QRectF PageItem::pageRect() const
     return QRectF(QPointF(0, 0), m_sizePoints);
 }
 
+void PageItem::setOverlay(const PageOverlay &overlay)
+{
+    m_overlay = overlay;
+    update();
+}
+
+QTransform PageItem::pageToItem() const
+{
+    // m_sizePoints is the rotated size, so the unrotated page is transposed for
+    // the quarter turns.
+    const int rotation = ((m_session->rotation() % 360) + 360) % 360;
+    const qreal width = (rotation == 90 || rotation == 270) ? m_sizePoints.height()
+                                                            : m_sizePoints.width();
+    const qreal height = (rotation == 90 || rotation == 270) ? m_sizePoints.width()
+                                                             : m_sizePoints.height();
+
+    switch (rotation) {
+    case 90:
+        return QTransform(0, 1, -1, 0, height, 0);
+    case 180:
+        return QTransform(-1, 0, 0, -1, width, height);
+    case 270:
+        return QTransform(0, -1, 1, 0, 0, width);
+    default:
+        return {};
+    }
+}
+
+QPointF PageItem::toPagePoint(const QPointF &itemPoint) const
+{
+    return pageToItem().inverted().map(itemPoint);
+}
+
+QRectF PageItem::toPageRect(const QRectF &itemRect) const
+{
+    return pageToItem().inverted().mapRect(itemRect);
+}
+
 QRectF PageItem::boundingRect() const
 {
     return pageRect().adjusted(-shadowSpread, -shadowSpread, shadowSpread, shadowSpread + 4);
@@ -125,6 +163,14 @@ void PageItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, 
         painter->setPen(Qt::NoPen);
     }
 
+    if (!m_overlay.isEmpty()) {
+        painter->save();
+        painter->setClipPath(pagePath);
+        painter->setTransform(pageToItem(), true);
+        paintOverlay(painter, colors);
+        painter->restore();
+    }
+
     painter->setBrush(Qt::NoBrush);
     if (isCurrent) {
         QColor ring = colors.accent;
@@ -134,6 +180,102 @@ void PageItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, 
         painter->setPen(QPen(colors.borderStrong, 0.8));
     }
     painter->drawPath(pagePath);
+}
+
+void PageItem::paintOverlay(QPainter *painter, const Palette &colors)
+{
+    // Selected text: a translucent wash in the accent colour, the way every
+    // text editor does it, so it reads as selection and not as a highlight
+    // annotation the user might mistake for content.
+    if (!m_overlay.selection.isEmpty()) {
+        QColor wash = colors.accent;
+        wash.setAlphaF(0.28f);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(wash);
+        for (const QRectF &box : m_overlay.selection)
+            painter->drawRect(box.adjusted(-0.4, -0.4, 0.4, 0.4));
+    }
+
+    // Search hits: outlined so they stay visible over dark or coloured content,
+    // with the current hit filled.
+    if (!m_overlay.matches.isEmpty()) {
+        QColor found = colors.markupYellow;
+        found.setAlphaF(0.38f);
+        painter->setBrush(found);
+        painter->setPen(QPen(colors.markupYellow.darker(140), 0.7));
+        for (const QRectF &box : m_overlay.matches)
+            painter->drawRoundedRect(box.adjusted(-0.8, -0.8, 0.8, 0.8), 1.5, 1.5);
+    }
+    if (!m_overlay.activeMatch.isNull()) {
+        QColor current = colors.accent;
+        current.setAlphaF(0.42f);
+        painter->setBrush(current);
+        painter->setPen(QPen(colors.accent, 1.1));
+        painter->drawRoundedRect(m_overlay.activeMatch.adjusted(-1, -1, 1, 1), 1.5, 1.5);
+    }
+
+    // The annotation the user has picked: a dashed frame with corner handles, so
+    // it is clearly a selection and not part of the page.
+    if (!m_overlay.selectedAnnotation.isNull()) {
+        const QRectF frame = m_overlay.selectedAnnotation.adjusted(-2, -2, 2, 2);
+        painter->setBrush(Qt::NoBrush);
+        QPen dashed(colors.accent, 1.0, Qt::DashLine);
+        dashed.setDashPattern({ 4, 3 });
+        painter->setPen(dashed);
+        painter->drawRect(frame);
+
+        painter->setPen(QPen(colors.accent, 0.8));
+        painter->setBrush(colors.surface);
+        constexpr qreal handle = 3.0;
+        for (const QPointF &corner : { frame.topLeft(), frame.topRight(), frame.bottomLeft(),
+                                       frame.bottomRight() }) {
+            painter->drawRect(QRectF(corner.x() - handle, corner.y() - handle, handle * 2,
+                                     handle * 2));
+        }
+    }
+
+    // Freehand in progress, drawn with the same colour and width the committed
+    // ink annotation will have.
+    if (!m_overlay.strokes.isEmpty()) {
+        QPen inkPen(m_overlay.toolColor.isValid() ? m_overlay.toolColor : colors.accent,
+                    m_overlay.toolWidth);
+        inkPen.setCapStyle(Qt::RoundCap);
+        inkPen.setJoinStyle(Qt::RoundJoin);
+        painter->setPen(inkPen);
+        painter->setBrush(Qt::NoBrush);
+        for (const QPolygonF &stroke : m_overlay.strokes) {
+            if (stroke.size() == 1)
+                painter->drawPoint(stroke.first());
+            else
+                painter->drawPolyline(stroke);
+        }
+    }
+
+    if (!m_overlay.pendingShape.isNull()) {
+        const QColor tool = m_overlay.toolColor.isValid() ? m_overlay.toolColor : colors.accent;
+        switch (m_overlay.pendingShapeKind) {
+        case PageOverlay::PendingShape::Redaction: {
+            painter->setPen(QPen(Qt::black, 1.0));
+            QColor fill = Qt::black;
+            fill.setAlphaF(0.72f);
+            painter->setBrush(fill);
+            painter->drawRect(m_overlay.pendingShape);
+            break;
+        }
+        case PageOverlay::PendingShape::Ellipse:
+            painter->setPen(QPen(tool, m_overlay.toolWidth));
+            painter->setBrush(Qt::NoBrush);
+            painter->drawEllipse(m_overlay.pendingShape);
+            break;
+        case PageOverlay::PendingShape::Rectangle:
+            painter->setPen(QPen(tool, m_overlay.toolWidth));
+            painter->setBrush(Qt::NoBrush);
+            painter->drawRect(m_overlay.pendingShape);
+            break;
+        case PageOverlay::PendingShape::None:
+            break;
+        }
+    }
 }
 
 } // namespace sweet::ui

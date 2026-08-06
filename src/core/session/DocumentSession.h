@@ -1,12 +1,16 @@
 #pragma once
 
+#include "core/pdf/PdfAnnotations.h"
+#include "core/pdf/PdfContent.h"
 #include "core/pdf/PdfDocument.h"
+#include "core/pdf/PdfForms.h"
 #include "core/render/RenderQueue.h"
 
 #include <QObject>
 #include <QString>
 #include <QUndoStack>
 
+#include <functional>
 #include <memory>
 
 namespace sweet::core {
@@ -25,6 +29,8 @@ enum class Tool {
     Draw,
     Note,
     Redact,
+    Shape,
+    Ellipse,
 };
 
 /// How pages are laid out in the viewport.
@@ -77,6 +83,81 @@ public:
     static constexpr qreal minZoom = 0.08;
     static constexpr qreal maxZoom = 16.0;
 
+    // --- Saving -----------------------------------------------------------
+
+    /// Writes back to the file the document came from. Falls back to reporting
+    /// false with a reason when there is nowhere to save to.
+    bool save(QString *errorMessage);
+
+    /// Writes to `path` and, unless `asCopy` is set, makes that the document's
+    /// file from now on.
+    bool saveAs(const QString &path, const SaveOptions &options, bool asCopy,
+                QString *errorMessage);
+
+    // --- Annotations ------------------------------------------------------
+
+    /// Pushes an undoable "add annotation" step. Returns false when the document
+    /// is not a PDF or does not allow annotating.
+    bool addAnnotation(const AnnotationSpec &spec, const QString &commandText = QString());
+
+    bool removeAnnotation(const Annotation &annotation);
+
+    /// Changes colour, opacity or text. Consecutive edits of the same annotation
+    /// merge into one undo step.
+    bool modifyAnnotation(const Annotation &before, const QColor &color, qreal opacity,
+                          const QString &contents);
+
+    QList<Annotation> annotationsOnPage(int pageIndex) const;
+
+    /// Currently selected annotation, or an object number of 0 for none.
+    int selectedAnnotation() const noexcept { return m_selectedAnnotation; }
+    void setSelectedAnnotation(int pageIndex, int objectNumber);
+
+    /// Colour and opacity new markup is created with.
+    QColor markupColor() const noexcept { return m_markupColor; }
+    void setMarkupColor(const QColor &color);
+    qreal markupOpacity() const noexcept { return m_markupOpacity; }
+    void setMarkupOpacity(qreal opacity);
+    QString author() const noexcept { return m_author; }
+    void setAuthor(const QString &author);
+
+    // --- Pictures, signatures and links -----------------------------------
+
+    /// Places `image` on `pageIndex` inside `rect` (page points) as an undoable
+    /// step. Used by Add Image and by Sign.
+    bool addImage(int pageIndex, const QImage &image, const QRectF &rect,
+                  const QString &commandText = QString());
+
+    /// Adds a link over `rect`. `uri` is an external URL or an internal
+    /// destination from `content::internalUri`.
+    bool addLink(int pageIndex, const QRectF &rect, const QString &uri);
+
+    // --- Forms ------------------------------------------------------------
+
+    /// Fills in a form field, undoably. Consecutive edits of one field merge.
+    bool setFormValue(int pageIndex, int objectNumber, const QString &value);
+
+    /// Writes a field value without touching the undo stack. For the commands.
+    bool writeFormValue(int pageIndex, int objectNumber, const QString &value);
+
+    // --- Structural edits -------------------------------------------------
+
+    /// Runs `edit` on the document and pushes one undoable step for it, taking
+    /// care of re-opening the document so nothing keeps pointing at removed
+    /// objects. `edit` may throw MuError; the message is reported and the document
+    /// left untouched.
+    bool applyStructuralEdit(const QString &commandText,
+                             const std::function<void(PdfDocument &)> &edit,
+                             QString *errorMessage = nullptr);
+
+    // Used by the undo commands. Not for general use: they do the work without
+    // touching the undo stack.
+    int createAnnotation(const AnnotationSpec &spec);
+    bool deleteAnnotation(int pageIndex, int objectNumber);
+    bool changeAnnotation(int pageIndex, int objectNumber, const QColor &color, qreal opacity,
+                          const QString &contents);
+    void restoreDocumentBytes(const QByteArray &bytes);
+
 public Q_SLOTS:
     void setCurrentPage(int pageIndex);
     void setZoom(qreal zoom);
@@ -99,7 +180,22 @@ Q_SIGNALS:
     void modifiedChanged(bool modified);
     void pageInvalidated(int pageIndex);
 
+    /// The annotations of `pageIndex` changed, or every page when it is -1.
+    void annotationsChanged(int pageIndex);
+
+    /// A form field on `pageIndex` was filled in, or every page when -1.
+    void formsChanged(int pageIndex);
+
+    void selectedAnnotationChanged(int pageIndex, int objectNumber);
+    void markupStyleChanged();
+    void savedTo(const QString &path);
+
 private:
+    /// Swaps in a document and tells everyone. Used by load and by structural
+    /// undo, which re-opens the document from bytes.
+    void adoptDocument(std::shared_ptr<PdfDocument> document, const QString &path,
+                       bool resetHistory);
+
     std::shared_ptr<PdfDocument> m_document;
     RenderQueue *m_renderQueue = nullptr;
     QUndoStack *m_undoStack = nullptr;
@@ -112,6 +208,12 @@ private:
     Tool m_tool = Tool::Select;
     PageLayout m_layout = PageLayout::Continuous;
     ZoomMode m_zoomMode = ZoomMode::FitWidth;
+
+    QColor m_markupColor = QColor(0xFF, 0xDD, 0x4A);
+    qreal m_markupOpacity = 0.45;
+    QString m_author;
+    int m_selectedAnnotation = 0;
+    int m_selectedAnnotationPage = -1;
 };
 
 } // namespace sweet::core

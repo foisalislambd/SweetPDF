@@ -1,5 +1,7 @@
 #include "ui/panels/Sidebar.h"
 
+#include "ui/panels/CommentsPanel.h"
+#include "ui/panels/FormsPanel.h"
 #include "ui/panels/OutlinePanel.h"
 #include "ui/panels/ThumbnailPanel.h"
 #include "ui/theme/Theme.h"
@@ -102,12 +104,20 @@ Sidebar::Sidebar(QWidget *parent)
 
     m_thumbnails = new ThumbnailPanel(m_stack);
     m_outline = new OutlinePanel(m_stack);
+    m_comments = new CommentsPanel(m_stack);
+    m_forms = new FormsPanel(m_stack);
     m_stack->addWidget(m_thumbnails);
     m_stack->addWidget(m_outline);
-    m_stack->addWidget(makePlaceholder(QStringLiteral("comment"), tr("Comments"),
-                                       tr("Comments and replies will be listed here once you "
-                                          "annotate the document."),
-                                       m_stack));
+    m_stack->addWidget(m_comments);
+    m_stack->addWidget(m_forms);
+    connect(m_forms, &FormsPanel::fieldActivated, this, &Sidebar::annotationActivated);
+    connect(m_forms, &FormsPanel::statusMessage, this, &Sidebar::statusMessage);
+    connect(m_comments, &CommentsPanel::annotationActivated, this,
+            &Sidebar::annotationActivated);
+    connect(m_thumbnails, &ThumbnailPanel::extractRequested, this, &Sidebar::extractRequested);
+    connect(m_thumbnails, &ThumbnailPanel::insertFileRequested, this,
+            &Sidebar::insertFileRequested);
+    connect(m_thumbnails, &ThumbnailPanel::statusMessage, this, &Sidebar::statusMessage);
     m_stack->addWidget(makePlaceholder(QStringLiteral("attachment"), tr("Attachments"),
                                        tr("Files embedded in the PDF appear here."), m_stack));
     m_stack->addWidget(makePlaceholder(QStringLiteral("layers"), tr("Layers"),
@@ -116,6 +126,7 @@ Sidebar::Sidebar(QWidget *parent)
     addRailButton(Panel::Pages, QStringLiteral("pages"), tr("Pages"));
     addRailButton(Panel::Bookmarks, QStringLiteral("bookmark"), tr("Marks"));
     addRailButton(Panel::Comments, QStringLiteral("comment"), tr("Notes"));
+    addRailButton(Panel::Forms, QStringLiteral("form"), tr("Forms"));
     addRailButton(Panel::Attachments, QStringLiteral("attachment"), tr("Files"));
     addRailButton(Panel::Layers, QStringLiteral("layers"), tr("Layers"));
 
@@ -171,8 +182,8 @@ void Sidebar::showPanel(Panel panel)
 
     const QHash<Panel, QString> titles = {
         { Panel::Pages, tr("Pages") },       { Panel::Bookmarks, tr("Bookmarks") },
-        { Panel::Comments, tr("Comments") }, { Panel::Attachments, tr("Attachments") },
-        { Panel::Layers, tr("Layers") },
+        { Panel::Comments, tr("Comments") }, { Panel::Forms, tr("Form fields") },
+        { Panel::Attachments, tr("Attachments") }, { Panel::Layers, tr("Layers") },
     };
     m_title->setText(titles.value(panel));
 }
@@ -205,6 +216,8 @@ void Sidebar::setSession(core::DocumentSession *session)
 {
     m_thumbnails->setSession(session);
     m_outline->setSession(session);
+    m_comments->setSession(session);
+    m_forms->setSession(session);
 }
 
 } // namespace sweet::ui

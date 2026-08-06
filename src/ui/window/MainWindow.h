@@ -4,6 +4,8 @@
 #include <QMainWindow>
 #include <QStringList>
 
+#include <functional>
+
 class QAction;
 class QLabel;
 class QLineEdit;
@@ -20,6 +22,7 @@ class DocumentSession;
 
 namespace sweet::ui {
 
+class FindBar;
 class PageView;
 class PropertiesPanel;
 class RibbonBar;
@@ -46,6 +49,41 @@ public Q_SLOTS:
     void openFileDialog();
     void closeCurrentDocument();
 
+    // --- File ------------------------------------------------------------
+    bool saveDocument();
+    bool saveDocumentAs(bool asCopy = false);
+    void printDocument();
+    void exportImages();
+    void exportText();
+    void exportHtml();
+
+    // --- Pages -----------------------------------------------------------
+    void insertBlankPage();
+    void insertPagesFromFile(int atPage);
+    void deleteCurrentPages();
+    void extractPages(const QList<int> &pages);
+    void mergeDocuments();
+    void splitDocument();
+
+    // --- Content ---------------------------------------------------------
+    void addImageToPage();
+    void replaceSelectedImage();
+    void addLinkToPage();
+    void signDocument();
+    void replaceSelectedText();
+
+    // --- Tools -----------------------------------------------------------
+    void compressDocument();
+    void protectDocument();
+    void addWatermark();
+    void applyRedactions();
+    void recogniseText();
+    void flattenDocument();
+    void showPreferences();
+
+    // --- Find ------------------------------------------------------------
+    void showFindBar();
+
 protected:
     void closeEvent(QCloseEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -69,14 +107,30 @@ private:
     PageView *currentView() const;
     sweet::core::DocumentSession *currentSession() const;
     PageView *viewAt(int tabIndex) const;
+    FindBar *currentFindBar() const;
     int tabForPath(const QString &path) const;
+
+    /// True when the current document can be edited at all, with a message shown
+    /// when it cannot: a viewer-only format, or a document whose permissions say no.
+    bool requireEditableDocument(bool needsAssembly = false);
+
+    /// Runs a long job with a cancellable progress dialog. `work` receives a
+    /// progress reporter it must call, and returns false when it was cancelled.
+    void runWithProgress(const QString &title,
+                         const std::function<bool(const std::function<bool(int, int)> &)> &work);
+
+    /// A path next to the document, with `suffix` appended before the extension.
+    QString suggestedPath(const QString &suffix, const QString &extension) const;
+
+    void report(const QString &message);
+    void reportError(const QString &title, const QString &details);
+
+    /// The opacity slider that sits in the Comment ribbon page.
+    QWidget *createMarkupOpacityControl(QWidget *parent);
 
     QAction *makeAction(const QString &id, const QString &text, const QString &iconName,
                         const QKeySequence &shortcut = QKeySequence());
     QAction *action(const QString &id) const;
-    /// Registers an action that has no implementation yet: visible, disabled and
-    /// labelled as planned so the command surface stays discoverable.
-    QAction *makePlannedAction(const QString &id, const QString &text, const QString &iconName);
 
     void addRecentFile(const QString &path);
     void rebuildRecentMenu();
@@ -90,6 +144,7 @@ private:
     QStackedWidget *m_center = nullptr;
     WelcomeView *m_welcome = nullptr;
 
+    QSlider *m_markupOpacitySlider = nullptr;
     QLineEdit *m_pageField = nullptr;
     QLabel *m_pageCountLabel = nullptr;
     QToolButton *m_zoomButton = nullptr;

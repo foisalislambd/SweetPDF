@@ -8,6 +8,11 @@ qt_add_library(sweetpdf_core STATIC
     pdf/MuContext.h            pdf/MuContext.cpp
     pdf/PdfDocument.h          pdf/PdfDocument.cpp
     pdf/PdfPage.h              pdf/PdfPage.cpp
+    pdf/PageText.h             pdf/PageText.cpp
+    pdf/PdfAnnotations.h       pdf/PdfAnnotations.cpp
+    pdf/PdfContent.h           pdf/PdfContent.cpp
+    pdf/PdfForms.h             pdf/PdfForms.cpp
+    pdf/PdfExport.h            pdf/PdfExport.cpp
 
     # render/ - turning pages into bitmaps off the GUI thread.
     render/RenderKey.h
@@ -17,6 +22,7 @@ qt_add_library(sweetpdf_core STATIC
     # session/ - per-document state and the undo history.
     session/DocumentSession.h  session/DocumentSession.cpp
     session/DocumentCommand.h
+    session/EditCommands.h     session/EditCommands.cpp
 
     # util/ - cross-cutting helpers.
     util/Logging.h             util/Logging.cpp

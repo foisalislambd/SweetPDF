@@ -4,8 +4,15 @@
 #include "ui/theme/Theme.h"
 #include "ui/viewer/PageItem.h"
 
+#include <QApplication>
+#include <QClipboard>
+#include <QContextMenuEvent>
+#include <QDesktopServices>
+#include <QMessageBox>
 #include <QGraphicsScene>
+#include <QInputDialog>
 #include <QKeyEvent>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPropertyAnimation>
@@ -19,6 +26,26 @@ constexpr qreal pageGap = 20.0; ///< Vertical space between pages, in points.
 constexpr qreal pageMargin = 28.0;
 constexpr qreal zoomStep = 1.2;
 constexpr int scrollAnimationMs = 220;
+
+/// Which markup type a tool produces, or Other for tools that are not markup.
+core::AnnotationType markupTypeFor(core::Tool tool)
+{
+    switch (tool) {
+    case core::Tool::Highlight:
+        return core::AnnotationType::Highlight;
+    case core::Tool::Underline:
+        return core::AnnotationType::Underline;
+    case core::Tool::Strikeout:
+        return core::AnnotationType::StrikeOut;
+    default:
+        return core::AnnotationType::Other;
+    }
+}
+
+bool isShapeTool(core::Tool tool)
+{
+    return tool == core::Tool::Shape || tool == core::Tool::Ellipse || tool == core::Tool::Redact;
+}
 
 } // namespace
 
@@ -65,6 +92,21 @@ PageView::PageView(core::DocumentSession *session, QWidget *parent)
     connect(m_session, &core::DocumentSession::zoomModeChanged, this,
             [this] { updateFitZoom(); });
     connect(m_session, &core::DocumentSession::toolChanged, this, &PageView::applyTool);
+    connect(m_session, &core::DocumentSession::annotationsChanged, this, [this](int pageIndex) {
+        // The annotation the overlay was framing may be gone, and its box may
+        // have moved, so re-read it from the document.
+        if (m_selectedAnnotation != 0
+            && (pageIndex < 0 || pageIndex == m_selectedAnnotationPage)) {
+            const int page = m_selectedAnnotationPage;
+            const int object = m_selectedAnnotation;
+            m_selectedAnnotation = 0;
+            m_selectedAnnotationPage = -1;
+            revealAnnotation(page, object);
+        }
+        refreshOverlay(pageIndex);
+    });
+    connect(m_session, &core::DocumentSession::markupStyleChanged, this,
+            [this] { refreshOverlay(m_drawPage); });
     connect(m_session, &core::DocumentSession::pageInvalidated, this, [this](int pageIndex) {
         if (pageIndex < 0) {
             for (PageItem *item : m_items)
@@ -109,6 +151,21 @@ void PageView::rebuildScene()
     m_scene->clear();
     m_items.clear();
     m_indicatedPage = m_session->currentPage();
+
+    // Selection and drawing refer to pages that are about to be replaced.
+    m_selectionPage = -1;
+    m_selection = {};
+    m_selectingText = false;
+    m_drawing = false;
+    m_drawPage = -1;
+    m_strokes.clear();
+    m_currentStroke.clear();
+    m_pendingShape = QRectF();
+    m_selectedAnnotation = 0;
+    m_selectedAnnotationPage = -1;
+    m_matches.clear();
+    m_activeMatchPage = -1;
+    Q_EMIT selectionChanged(false);
 
     const auto &document = m_session->document();
     if (!document)
@@ -183,30 +240,45 @@ void PageView::applyZoom()
 
 void PageView::applyTool()
 {
+    // Anything half-drawn belongs to the tool that is being left behind.
+    if (m_drawing || !m_strokes.isEmpty() || !m_pendingShape.isNull()) {
+        const int page = m_drawPage;
+        m_drawing = false;
+        m_drawPage = -1;
+        m_strokes.clear();
+        m_currentStroke.clear();
+        m_pendingShape = QRectF();
+        refreshOverlay(page);
+    }
+    m_selectingText = false;
+
+    // The rubber band is never used: dragging on a page selects text, and the
+    // hand tool or the middle button pans.
+    setDragMode(QGraphicsView::NoDrag);
+
     switch (m_session->tool()) {
     case core::Tool::Hand:
         setDragMode(QGraphicsView::ScrollHandDrag);
         viewport()->setCursor(Qt::OpenHandCursor);
         break;
     case core::Tool::Select:
-        setDragMode(QGraphicsView::RubberBandDrag);
-        viewport()->setCursor(Qt::ArrowCursor);
-        break;
-    case core::Tool::AddText:
-    case core::Tool::EditText:
-        setDragMode(QGraphicsView::NoDrag);
-        viewport()->setCursor(Qt::IBeamCursor);
-        break;
-    case core::Tool::Draw:
     case core::Tool::Highlight:
     case core::Tool::Underline:
     case core::Tool::Strikeout:
+    case core::Tool::EditText:
+        viewport()->setCursor(Qt::IBeamCursor);
+        break;
+    case core::Tool::Draw:
+    case core::Tool::Shape:
+    case core::Tool::Ellipse:
     case core::Tool::Redact:
-        setDragMode(QGraphicsView::NoDrag);
         viewport()->setCursor(Qt::CrossCursor);
         break;
+    case core::Tool::Note:
+    case core::Tool::AddText:
+        viewport()->setCursor(Qt::PointingHandCursor);
+        break;
     default:
-        setDragMode(QGraphicsView::NoDrag);
         viewport()->setCursor(Qt::ArrowCursor);
         break;
     }
@@ -360,6 +432,550 @@ void PageView::resizeEvent(QResizeEvent *event)
     updateFitZoom();
 }
 
+// --- Page hit testing ------------------------------------------------------
+
+PageItem *PageView::pageAt(const QPoint &viewportPos, QPointF *pagePoint) const
+{
+    const QPointF scenePoint = mapToScene(viewportPos);
+    for (PageItem *item : m_items) {
+        const QPointF itemPoint = item->mapFromScene(scenePoint);
+        if (!item->pageRect().contains(itemPoint))
+            continue;
+        if (pagePoint)
+            *pagePoint = item->toPagePoint(itemPoint);
+        return item;
+    }
+    return nullptr;
+}
+
+std::shared_ptr<const core::PageText> PageView::textOf(int pageIndex) const
+{
+    const auto &document = m_session->document();
+    if (!document)
+        return nullptr;
+    if (auto page = document->page(pageIndex))
+        return page->textLayer();
+    return nullptr;
+}
+
+// --- Overlays --------------------------------------------------------------
+
+void PageView::refreshOverlay(int pageIndex)
+{
+    if (pageIndex < 0) {
+        for (const PageItem *item : m_items)
+            refreshOverlay(item->pageIndex());
+        return;
+    }
+
+    PageItem *item = itemForPage(pageIndex);
+    if (!item)
+        return;
+
+    PageOverlay overlay;
+    overlay.toolColor = m_session->markupColor();
+
+    if (pageIndex == m_selectionPage && !m_selection.isEmpty()) {
+        if (auto text = textOf(pageIndex))
+            overlay.selection = text->boxes(m_selection);
+    }
+
+    if (const auto hits = m_matches.constFind(pageIndex); hits != m_matches.cend()) {
+        if (auto text = textOf(pageIndex)) {
+            for (const core::TextRange &range : *hits) {
+                const bool isActive = pageIndex == m_activeMatchPage
+                    && range.from == m_activeMatch.from && range.to == m_activeMatch.to;
+                const QList<QRectF> boxes = text->boxes(range);
+                if (isActive && !boxes.isEmpty())
+                    overlay.activeMatch = boxes.first();
+                else
+                    overlay.matches.append(boxes);
+            }
+        }
+    }
+
+    if (pageIndex == m_drawPage) {
+        overlay.strokes = m_strokes;
+        if (!m_currentStroke.isEmpty())
+            overlay.strokes.append(m_currentStroke);
+        overlay.toolWidth = 2.0;
+
+        if (!m_pendingShape.isNull()) {
+            overlay.pendingShape = m_pendingShape;
+            switch (m_placement != Placement::None ? core::Tool::Shape : m_session->tool()) {
+            case core::Tool::Ellipse:
+                overlay.pendingShapeKind = PageOverlay::PendingShape::Ellipse;
+                break;
+            case core::Tool::Redact:
+                overlay.pendingShapeKind = PageOverlay::PendingShape::Redaction;
+                break;
+            default:
+                overlay.pendingShapeKind = PageOverlay::PendingShape::Rectangle;
+                break;
+            }
+        }
+    }
+
+    if (pageIndex == m_selectedAnnotationPage && m_selectedAnnotation != 0)
+        overlay.selectedAnnotation = m_selectedAnnotationRect;
+
+    item->setOverlay(overlay);
+}
+
+// --- Text selection --------------------------------------------------------
+
+bool PageView::hasSelection() const
+{
+    return m_selectionPage >= 0 && !m_selection.isEmpty();
+}
+
+QString PageView::selectedText() const
+{
+    if (!hasSelection())
+        return {};
+    if (auto text = textOf(m_selectionPage))
+        return text->textIn(m_selection);
+    return {};
+}
+
+void PageView::setSelection(int pageIndex, const core::TextRange &range)
+{
+    const bool had = hasSelection();
+    const int previousPage = m_selectionPage;
+
+    m_selectionPage = pageIndex;
+    m_selection = range;
+
+    if (previousPage >= 0 && previousPage != pageIndex)
+        refreshOverlay(previousPage);
+    refreshOverlay(pageIndex);
+
+    if (had != hasSelection())
+        Q_EMIT selectionChanged(hasSelection());
+}
+
+void PageView::clearSelection()
+{
+    if (!hasSelection())
+        return;
+    setSelection(-1, {});
+}
+
+void PageView::copySelection()
+{
+    const QString text = selectedText();
+    if (text.isEmpty())
+        return;
+
+    const auto &document = m_session->document();
+    if (document && !document->permissions().copy) {
+        Q_EMIT statusMessage(tr("This document does not allow copying text."));
+        return;
+    }
+
+    QGuiApplication::clipboard()->setText(text);
+    Q_EMIT statusMessage(tr("%n character(s) copied.", nullptr, int(text.size())));
+}
+
+void PageView::selectAllOnCurrentPage()
+{
+    const int pageIndex = m_session->currentPage();
+    if (auto text = textOf(pageIndex); text && !text->isEmpty())
+        setSelection(pageIndex, { 0, text->length() });
+}
+
+bool PageView::markUpSelection(core::AnnotationType type)
+{
+    if (!hasSelection())
+        return false;
+
+    auto text = textOf(m_selectionPage);
+    if (!text)
+        return false;
+
+    core::AnnotationSpec spec;
+    spec.type = type;
+    spec.pageIndex = m_selectionPage;
+    spec.quads = text->boxes(m_selection);
+    spec.color = m_session->markupColor();
+    // Underlines and strikeouts are lines, not washes, so full opacity reads
+    // better than the translucency a highlight wants.
+    spec.opacity = type == core::AnnotationType::Highlight ? m_session->markupOpacity() : 1.0;
+    spec.author = m_session->author();
+    if (spec.quads.isEmpty())
+        return false;
+
+    if (type == core::AnnotationType::Redact) {
+        spec.color = Qt::black;
+        spec.opacity = 1.0;
+    }
+
+    const bool added = m_session->addAnnotation(spec);
+    if (added)
+        clearSelection();
+    return added;
+}
+
+// --- Search ----------------------------------------------------------------
+
+void PageView::showMatches(const QHash<int, QList<core::TextRange>> &matches)
+{
+    m_matches = matches;
+    refreshOverlay();
+}
+
+void PageView::clearMatches()
+{
+    if (m_matches.isEmpty() && m_activeMatchPage < 0)
+        return;
+    m_matches.clear();
+    m_activeMatchPage = -1;
+    m_activeMatch = {};
+    refreshOverlay();
+}
+
+void PageView::focusMatch(int pageIndex, const core::TextRange &range)
+{
+    const int previous = m_activeMatchPage;
+    m_activeMatchPage = pageIndex;
+    m_activeMatch = range;
+
+    if (previous >= 0 && previous != pageIndex)
+        refreshOverlay(previous);
+    refreshOverlay(pageIndex);
+
+    if (auto text = textOf(pageIndex)) {
+        const QList<QRectF> boxes = text->boxes(range);
+        if (!boxes.isEmpty())
+            scrollRectIntoView(pageIndex, boxes.first());
+    }
+}
+
+void PageView::scrollRectIntoView(int pageIndex, const QRectF &pageRect)
+{
+    PageItem *item = itemForPage(pageIndex);
+    if (!item)
+        return;
+
+    const QRectF inItem = item->pageToItem().mapRect(pageRect);
+    const QRectF inScene = item->mapRectToScene(inItem);
+    const QRect inViewport = mapFromScene(inScene).boundingRect();
+    const QRect visible = viewport()->rect();
+
+    // Leave a comfortable margin so a hit near the edge is not glued to it.
+    constexpr int margin = 80;
+    if (inViewport.top() >= margin && inViewport.bottom() <= visible.height() - margin)
+        return;
+
+    const int wanted = inViewport.center().y() - visible.height() / 2;
+    animateScrollTo(verticalScrollBar()->value() + wanted);
+
+    if (inViewport.left() < 0 || inViewport.right() > visible.width()) {
+        horizontalScrollBar()->setValue(horizontalScrollBar()->value() + inViewport.center().x()
+                                       - visible.width() / 2);
+    }
+}
+
+// --- Annotations -----------------------------------------------------------
+
+core::Annotation PageView::annotationAt(int pageIndex, const QPointF &pagePoint) const
+{
+    const QList<core::Annotation> found = m_session->annotationsOnPage(pageIndex);
+    // Later annotations are painted on top, so search backwards.
+    for (auto it = found.crbegin(); it != found.crend(); ++it) {
+        if (!it->editable)
+            continue;
+        if (it->rect.adjusted(-2, -2, 2, 2).contains(pagePoint))
+            return *it;
+    }
+    return {};
+}
+
+void PageView::revealAnnotation(int pageIndex, int objectNumber)
+{
+    const QList<core::Annotation> found = m_session->annotationsOnPage(pageIndex);
+    for (const core::Annotation &annotation : found) {
+        if (annotation.objectNumber != objectNumber)
+            continue;
+
+        const int previous = m_selectedAnnotationPage;
+        m_selectedAnnotationPage = pageIndex;
+        m_selectedAnnotation = objectNumber;
+        m_selectedAnnotationRect = annotation.rect;
+        if (previous >= 0 && previous != pageIndex)
+            refreshOverlay(previous);
+        refreshOverlay(pageIndex);
+
+        m_session->setSelectedAnnotation(pageIndex, objectNumber);
+        scrollRectIntoView(pageIndex, annotation.rect);
+        return;
+    }
+}
+
+bool PageView::deleteSelectedAnnotation()
+{
+    if (m_selectedAnnotation == 0)
+        return false;
+
+    const QList<core::Annotation> found = m_session->annotationsOnPage(m_selectedAnnotationPage);
+    for (const core::Annotation &annotation : found) {
+        if (annotation.objectNumber != m_selectedAnnotation)
+            continue;
+
+        const int page = m_selectedAnnotationPage;
+        m_selectedAnnotation = 0;
+        m_selectedAnnotationPage = -1;
+        m_selectedAnnotationRect = QRectF();
+        m_session->setSelectedAnnotation(-1, 0);
+        const bool removed = m_session->removeAnnotation(annotation);
+        refreshOverlay(page);
+        return removed;
+    }
+    return false;
+}
+
+void PageView::editSelectedAnnotation()
+{
+    if (m_selectedAnnotation == 0)
+        return;
+
+    const QList<core::Annotation> found = m_session->annotationsOnPage(m_selectedAnnotationPage);
+    for (const core::Annotation &annotation : found) {
+        if (annotation.objectNumber != m_selectedAnnotation)
+            continue;
+
+        bool accepted = false;
+        const QString text = QInputDialog::getMultiLineText(
+            this, tr("Edit note"), tr("Note text:"), annotation.contents, &accepted);
+        if (accepted)
+            m_session->modifyAnnotation(annotation, annotation.color, annotation.opacity, text);
+        return;
+    }
+}
+
+void PageView::createNoteAt(int pageIndex, const QPointF &pagePoint)
+{
+    bool accepted = false;
+    const QString text = QInputDialog::getMultiLineText(this, tr("New note"), tr("Note text:"),
+                                                        QString(), &accepted);
+    if (!accepted)
+        return;
+
+    core::AnnotationSpec spec;
+    spec.type = core::AnnotationType::Note;
+    spec.pageIndex = pageIndex;
+    spec.rect = QRectF(pagePoint, QSizeF(20, 20));
+    spec.color = m_session->markupColor();
+    spec.contents = text;
+    spec.author = m_session->author();
+    m_session->addAnnotation(spec);
+}
+
+void PageView::createTextBoxAt(int pageIndex, const QPointF &pagePoint)
+{
+    bool accepted = false;
+    const QString text = QInputDialog::getMultiLineText(this, tr("Add text"), tr("Text:"),
+                                                        QString(), &accepted);
+    if (!accepted || text.isEmpty())
+        return;
+
+    // Sized from the text so a short label does not get a huge box.
+    const int longestLine = std::max_element(
+                                text.split(QLatin1Char('\n')).cbegin(),
+                                text.split(QLatin1Char('\n')).cend(),
+                                [](const QString &a, const QString &b) {
+                                    return a.size() < b.size();
+                                })
+                                ->size();
+    const qreal width = qBound(80.0, longestLine * 6.2, 420.0);
+    const qreal height = qMax(24.0, text.count(QLatin1Char('\n')) * 14.0 + 22.0);
+
+    core::AnnotationSpec spec;
+    spec.type = core::AnnotationType::FreeText;
+    spec.pageIndex = pageIndex;
+    spec.rect = QRectF(pagePoint, QSizeF(width, height));
+    spec.color = QColor(0x14, 0x18, 0x25);
+    spec.contents = text;
+    spec.author = m_session->author();
+    spec.fontSize = 11.0;
+    m_session->addAnnotation(spec);
+}
+
+void PageView::commitPendingAnnotation()
+{
+    const core::Tool tool = m_session->tool();
+
+    if (tool == core::Tool::Draw && !m_strokes.isEmpty()) {
+        core::AnnotationSpec spec;
+        spec.type = core::AnnotationType::Ink;
+        spec.pageIndex = m_drawPage;
+        spec.strokes = m_strokes;
+        spec.color = m_session->markupColor();
+        spec.borderWidth = 2.0;
+        spec.author = m_session->author();
+        m_session->addAnnotation(spec);
+    } else if (isShapeTool(tool) && m_pendingShape.width() > 2 && m_pendingShape.height() > 2) {
+        core::AnnotationSpec spec;
+        spec.pageIndex = m_drawPage;
+        spec.rect = m_pendingShape;
+        spec.author = m_session->author();
+        switch (tool) {
+        case core::Tool::Ellipse:
+            spec.type = core::AnnotationType::Circle;
+            spec.color = m_session->markupColor();
+            break;
+        case core::Tool::Redact:
+            spec.type = core::AnnotationType::Redact;
+            spec.color = Qt::black;
+            break;
+        default:
+            spec.type = core::AnnotationType::Square;
+            spec.color = m_session->markupColor();
+            break;
+        }
+        m_session->addAnnotation(spec);
+    }
+
+    const int page = m_drawPage;
+    m_strokes.clear();
+    m_currentStroke.clear();
+    m_pendingShape = QRectF();
+    m_drawing = false;
+    m_drawPage = -1;
+    refreshOverlay(page);
+}
+
+bool PageView::followLinkAt(int pageIndex, const QPointF &pagePoint)
+{
+    if (!m_session->isLoaded())
+        return false;
+
+    const QList<core::content::Link> links =
+        core::content::linksOnPage(*m_session->document(), pageIndex);
+    for (const core::content::Link &link : links) {
+        if (!link.rect.contains(pagePoint))
+            continue;
+
+        const int target = core::content::pageForUri(*m_session->document(), link.uri);
+        if (target >= 0) {
+            m_session->setCurrentPage(target);
+            goToPage(target);
+            Q_EMIT statusMessage(tr("Jumped to page %1.").arg(target + 1));
+            return true;
+        }
+
+        // An address that leads outside the document is handed to the desktop,
+        // and only after the reader agrees: a PDF should not be able to open
+        // anything it likes behind your back.
+        const QUrl url(link.uri);
+        if (!url.isValid() || url.scheme().isEmpty())
+            return false;
+
+        const auto choice = QMessageBox::question(
+            this, tr("Open link"),
+            tr("This link leads outside the document:\n\n%1\n\nOpen it in your browser?")
+                .arg(link.uri),
+            QMessageBox::Cancel | QMessageBox::Open, QMessageBox::Open);
+        if (choice == QMessageBox::Open)
+            QDesktopServices::openUrl(url);
+        return true;
+    }
+    return false;
+}
+
+QList<QRectF> PageView::selectionBoxes() const
+{
+    if (!hasSelection())
+        return {};
+    if (auto text = textOf(m_selectionPage))
+        return text->boxes(m_selection);
+    return {};
+}
+
+void PageView::beginImagePlacement(const QImage &image, const QString &commandText)
+{
+    if (image.isNull())
+        return;
+
+    m_placement = Placement::Image;
+    m_placementImage = image;
+    m_placementText = commandText;
+    clearSelection();
+    viewport()->setCursor(Qt::CrossCursor);
+    Q_EMIT statusMessage(tr("Drag a box where the picture should go, or click once to place it "
+                            "at its own size."));
+}
+
+void PageView::beginLinkPlacement(const QString &uri)
+{
+    if (uri.isEmpty())
+        return;
+
+    m_placement = Placement::Link;
+    m_placementUri = uri;
+    viewport()->setCursor(Qt::CrossCursor);
+    Q_EMIT statusMessage(tr("Drag a box over the area the link should cover."));
+}
+
+void PageView::cancelPlacement()
+{
+    if (m_placement == Placement::None)
+        return;
+
+    m_placement = Placement::None;
+    m_placementImage = QImage();
+    m_placementUri.clear();
+    m_placementText.clear();
+
+    const int page = m_drawPage;
+    m_drawing = false;
+    m_drawPage = -1;
+    m_pendingShape = QRectF();
+    refreshOverlay(page);
+    applyTool();
+}
+
+void PageView::commitPlacement()
+{
+    const Placement kind = m_placement;
+    const int pageIndex = m_drawPage;
+    const QRectF box = m_pendingShape.normalized();
+    const QImage image = m_placementImage;
+    const QString uri = m_placementUri;
+    const QString commandText = m_placementText;
+
+    cancelPlacement();
+    if (kind == Placement::None || pageIndex < 0)
+        return;
+
+    if (kind == Placement::Image) {
+        QRectF target = box;
+        if (target.width() < 4 || target.height() < 4) {
+            // A click rather than a drag: place at the picture's own size, taking
+            // its pixels as 96 dpi, which is what screen captures and scans use.
+            const QSizeF natural(image.width() * 72.0 / 96.0, image.height() * 72.0 / 96.0);
+            target = QRectF(box.topLeft(), natural);
+        } else {
+            target = core::content::fitToAspect(QSizeF(image.size()), target);
+        }
+
+        if (m_session->addImage(pageIndex, image, target, commandText))
+            Q_EMIT statusMessage(tr("Placed on page %1.").arg(pageIndex + 1));
+        else
+            Q_EMIT statusMessage(tr("The picture could not be placed."));
+        return;
+    }
+
+    if (box.width() < 4 || box.height() < 4) {
+        Q_EMIT statusMessage(tr("A link needs a box: drag over the area it should cover."));
+        return;
+    }
+    if (m_session->addLink(pageIndex, box, uri))
+        Q_EMIT statusMessage(tr("Link added on page %1.").arg(pageIndex + 1));
+    else
+        Q_EMIT statusMessage(tr("The link could not be added."));
+}
+
 void PageView::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::MiddleButton && dragMode() != QGraphicsView::ScrollHandDrag) {
@@ -373,11 +989,213 @@ void PageView::mousePressEvent(QMouseEvent *event)
         event->accept();
         return;
     }
+
+    if (event->button() == Qt::LeftButton) {
+        QPointF pagePoint;
+        PageItem *item = pageAt(event->position().toPoint(), &pagePoint);
+        const core::Tool tool = m_session->tool();
+
+        if (item) {
+            const int pageIndex = item->pageIndex();
+
+            // An armed picture or link takes the drag before any tool does.
+            if (m_placement != Placement::None) {
+                m_drawPage = pageIndex;
+                m_drawing = true;
+                m_shapeOrigin = pagePoint;
+                m_pendingShape = QRectF(pagePoint, pagePoint);
+                refreshOverlay(pageIndex);
+                event->accept();
+                return;
+            }
+
+            // Following a link comes before everything else, the way it does in a
+            // reader: that is what a pointer over a link is for.
+            if (tool == core::Tool::Select || tool == core::Tool::Hand) {
+                if (followLinkAt(pageIndex, pagePoint)) {
+                    event->accept();
+                    return;
+                }
+            }
+
+            // Picking an existing annotation always wins over starting something
+            // new, otherwise a note could never be selected again.
+            if (tool == core::Tool::Select) {
+                const core::Annotation hit = annotationAt(pageIndex, pagePoint);
+                if (hit.objectNumber != 0) {
+                    clearSelection();
+                    revealAnnotation(pageIndex, hit.objectNumber);
+                    Q_EMIT annotationSelected(pageIndex, hit.objectNumber);
+                    event->accept();
+                    return;
+                }
+                if (m_selectedAnnotation != 0) {
+                    const int previous = m_selectedAnnotationPage;
+                    m_selectedAnnotation = 0;
+                    m_selectedAnnotationPage = -1;
+                    m_session->setSelectedAnnotation(-1, 0);
+                    refreshOverlay(previous);
+                }
+            }
+
+            switch (tool) {
+            case core::Tool::Select:
+            case core::Tool::Highlight:
+            case core::Tool::Underline:
+            case core::Tool::Strikeout: {
+                if (auto text = textOf(pageIndex)) {
+                    m_selectionAnchor = text->indexAt(pagePoint);
+                    m_selectingText = true;
+                    setSelection(pageIndex, { m_selectionAnchor, m_selectionAnchor });
+                }
+                event->accept();
+                return;
+            }
+            case core::Tool::Draw:
+                m_drawPage = pageIndex;
+                m_drawing = true;
+                m_currentStroke = QPolygonF({ pagePoint });
+                refreshOverlay(pageIndex);
+                event->accept();
+                return;
+            case core::Tool::Shape:
+            case core::Tool::Ellipse:
+            case core::Tool::Redact:
+                m_drawPage = pageIndex;
+                m_drawing = true;
+                m_shapeOrigin = pagePoint;
+                m_pendingShape = QRectF(pagePoint, pagePoint);
+                refreshOverlay(pageIndex);
+                event->accept();
+                return;
+            case core::Tool::Note:
+                createNoteAt(pageIndex, pagePoint);
+                m_session->setTool(core::Tool::Select);
+                event->accept();
+                return;
+            case core::Tool::AddText:
+                createTextBoxAt(pageIndex, pagePoint);
+                m_session->setTool(core::Tool::Select);
+                event->accept();
+                return;
+            default:
+                break;
+            }
+        } else if (tool == core::Tool::Select) {
+            clearSelection();
+        }
+    }
+
     QGraphicsView::mousePressEvent(event);
+}
+
+void PageView::mouseMoveEvent(QMouseEvent *event)
+{
+    if (m_selectingText && (event->buttons() & Qt::LeftButton)) {
+        QPointF pagePoint;
+        // Clamped to the page the selection started on: dragging past the edge
+        // should extend to the end of that page, not jump to the next one.
+        PageItem *item = pageAt(event->position().toPoint(), &pagePoint);
+        if (!item || item->pageIndex() != m_selectionPage) {
+            if (PageItem *anchorItem = itemForPage(m_selectionPage))
+                pagePoint = anchorItem->toPagePoint(anchorItem->mapFromScene(
+                    mapToScene(event->position().toPoint())));
+        }
+
+        if (auto text = textOf(m_selectionPage)) {
+            const int index = text->indexAt(pagePoint);
+            setSelection(m_selectionPage, { qMin(m_selectionAnchor, index),
+                                            qMax(m_selectionAnchor, index) });
+        }
+        event->accept();
+        return;
+    }
+
+    if (m_drawing && (event->buttons() & Qt::LeftButton)) {
+        QPointF pagePoint;
+        PageItem *item = pageAt(event->position().toPoint(), &pagePoint);
+        if (item && item->pageIndex() == m_drawPage) {
+            if (m_placement != Placement::None)
+                m_pendingShape = QRectF(m_shapeOrigin, pagePoint).normalized();
+            else if (m_session->tool() == core::Tool::Draw)
+                m_currentStroke.append(pagePoint);
+            else
+                m_pendingShape = QRectF(m_shapeOrigin, pagePoint).normalized();
+            refreshOverlay(m_drawPage);
+        }
+        event->accept();
+        return;
+    }
+
+    QGraphicsView::mouseMoveEvent(event);
+}
+
+void PageView::mouseDoubleClickEvent(QMouseEvent *event)
+{
+    QPointF pagePoint;
+    PageItem *item = pageAt(event->position().toPoint(), &pagePoint);
+    if (item && event->button() == Qt::LeftButton) {
+        const core::Annotation hit = annotationAt(item->pageIndex(), pagePoint);
+        if (hit.objectNumber != 0
+            && (hit.type == core::AnnotationType::Note
+                || hit.type == core::AnnotationType::FreeText || !hit.contents.isEmpty())) {
+            revealAnnotation(item->pageIndex(), hit.objectNumber);
+            editSelectedAnnotation();
+            event->accept();
+            return;
+        }
+
+        // Double-click selects a word, triple-click the line, as everywhere else.
+        if (auto text = textOf(item->pageIndex()); text && !text->isEmpty()) {
+            const int index = text->indexAt(pagePoint);
+            setSelection(item->pageIndex(), text->wordAt(index));
+            m_selectionAnchor = index;
+            event->accept();
+            return;
+        }
+    }
+
+    QGraphicsView::mouseDoubleClickEvent(event);
 }
 
 void PageView::mouseReleaseEvent(QMouseEvent *event)
 {
+    if (m_selectingText && event->button() == Qt::LeftButton) {
+        m_selectingText = false;
+
+        // A markup tool turns the drag straight into an annotation, so the reader
+        // does not have to select and then press a button.
+        const core::AnnotationType markup = markupTypeFor(m_session->tool());
+        if (markup != core::AnnotationType::Other && hasSelection())
+            markUpSelection(markup);
+        else if (hasSelection())
+            Q_EMIT selectionChanged(true);
+
+        event->accept();
+        return;
+    }
+
+    if (m_drawing && event->button() == Qt::LeftButton) {
+        if (m_placement != Placement::None) {
+            commitPlacement();
+            event->accept();
+            return;
+        }
+        if (m_session->tool() == core::Tool::Draw && !m_currentStroke.isEmpty()) {
+            m_strokes.append(m_currentStroke);
+            m_currentStroke.clear();
+            // Ink stays open for more strokes until the pointer leaves the page or
+            // the tool changes, which is how a pen is expected to behave. One
+            // stroke per release is committed immediately to keep undo granular.
+            commitPendingAnnotation();
+            event->accept();
+            return;
+        }
+        commitPendingAnnotation();
+        event->accept();
+        return;
+    }
+
     if (m_temporaryPan && event->button() == Qt::MiddleButton) {
         QMouseEvent synthetic(QEvent::MouseButtonRelease, event->position(),
                              event->globalPosition(), Qt::LeftButton, Qt::NoButton,
@@ -391,8 +1209,105 @@ void PageView::mouseReleaseEvent(QMouseEvent *event)
     QGraphicsView::mouseReleaseEvent(event);
 }
 
+void PageView::contextMenuEvent(QContextMenuEvent *event)
+{
+    QPointF pagePoint;
+    PageItem *item = pageAt(event->pos(), &pagePoint);
+    if (!item) {
+        QGraphicsView::contextMenuEvent(event);
+        return;
+    }
+
+    const int pageIndex = item->pageIndex();
+    const core::Annotation hit = annotationAt(pageIndex, pagePoint);
+
+    QMenu menu(this);
+    if (hit.objectNumber != 0) {
+        revealAnnotation(pageIndex, hit.objectNumber);
+        menu.addAction(icon(QStringLiteral("comment")), tr("Edit note…"), this,
+                       &PageView::editSelectedAnnotation);
+        menu.addAction(icon(QStringLiteral("trash")), tr("Delete %1")
+                                                          .arg(core::annotations::displayName(
+                                                                   hit.type)
+                                                                   .toLower()),
+                       this, [this] { deleteSelectedAnnotation(); });
+        menu.addSeparator();
+    }
+
+    const QList<core::content::Link> links = m_session->isLoaded()
+        ? core::content::linksOnPage(*m_session->document(), pageIndex)
+        : QList<core::content::Link>();
+    for (const core::content::Link &link : links) {
+        if (!link.rect.contains(pagePoint))
+            continue;
+        menu.addAction(icon(QStringLiteral("link")), tr("Follow link"), this,
+                       [this, pageIndex, pagePoint] { followLinkAt(pageIndex, pagePoint); });
+        menu.addAction(icon(QStringLiteral("trash")), tr("Remove link"), this,
+                       [this, pageIndex, pagePoint] {
+                           QString error;
+                           m_session->applyStructuralEdit(
+                               tr("Remove link"),
+                               [pageIndex, pagePoint](core::PdfDocument &document) {
+                                   core::content::removeLinkAt(document, pageIndex, pagePoint);
+                               },
+                               &error);
+                           if (!error.isEmpty())
+                               Q_EMIT statusMessage(error);
+                       });
+        menu.addSeparator();
+        break;
+    }
+
+    if (hasSelection()) {
+        menu.addAction(icon(QStringLiteral("copy")), tr("Copy"), this, &PageView::copySelection);
+        menu.addSeparator();
+        menu.addAction(icon(QStringLiteral("highlight")), tr("Highlight"), this,
+                       [this] { markUpSelection(core::AnnotationType::Highlight); });
+        menu.addAction(icon(QStringLiteral("underline")), tr("Underline"), this,
+                       [this] { markUpSelection(core::AnnotationType::Underline); });
+        menu.addAction(icon(QStringLiteral("strikeout")), tr("Strikeout"), this,
+                       [this] { markUpSelection(core::AnnotationType::StrikeOut); });
+        menu.addAction(icon(QStringLiteral("redact")), tr("Mark for redaction"), this,
+                       [this] { markUpSelection(core::AnnotationType::Redact); });
+        menu.addSeparator();
+    }
+
+    menu.addAction(icon(QStringLiteral("text-select")), tr("Select all on this page"), this,
+                   &PageView::selectAllOnCurrentPage);
+    menu.exec(event->globalPos());
+    event->accept();
+}
+
 void PageView::keyPressEvent(QKeyEvent *event)
 {
+    if (event->matches(QKeySequence::Copy)) {
+        copySelection();
+        event->accept();
+        return;
+    }
+    if (event->matches(QKeySequence::SelectAll)) {
+        selectAllOnCurrentPage();
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Escape) {
+        if (isPlacing()) {
+            cancelPlacement();
+            Q_EMIT statusMessage(tr("Cancelled."));
+            event->accept();
+            return;
+        }
+        clearSelection();
+        clearMatches();
+        event->accept();
+        return;
+    }
+    if ((event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace)
+        && deleteSelectedAnnotation()) {
+        event->accept();
+        return;
+    }
+
     switch (event->key()) {
     case Qt::Key_PageDown:
         m_session->setCurrentPage(m_session->currentPage() + 1);

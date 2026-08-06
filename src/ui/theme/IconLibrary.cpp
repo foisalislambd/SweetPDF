@@ -230,6 +230,13 @@ const QHash<QString, QString> &bodies()
                          "<path d='M8 10.8h5.6'/>") },
         { QStringLiteral("search"),
           QStringLiteral("<circle cx='10.8' cy='10.8' r='6.6'/><path d='M15.6 15.6 20.6 20.6'/>") },
+        { QStringLiteral("case-sensitive"),
+          QStringLiteral("<path d='M3 17.2 7.2 6.8l4.2 10.4'/><path d='M4.4 13.8h5.6'/>"
+                         "<path d='M20.4 11.6a3.2 3.2 0 0 0-5.6 2.1v.6a3.2 3.2 0 0 0 5.6 2.1'/>"
+                         "<path d='M20.4 10.4v6.6'/>") },
+        { QStringLiteral("whole-word"),
+          QStringLiteral("<path d='M3 8.6V6.4h18v2.2'/><path d='M3 15.4v2.2h18v-2.2'/>"
+                         "<path d='M8.4 15 11 8.8 13.6 15'/><path d='M9.3 13.2h3.4'/>") },
         { QStringLiteral("fit-page"),
           QStringLiteral("<path d='M4 9.6V4.4h5.2'/><path d='M20 9.6V4.4h-5.2'/>"
                          "<path d='M4 14.4v5.2h5.2'/><path d='M20 14.4v5.2h-5.2'/>") },

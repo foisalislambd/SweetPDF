@@ -9,6 +9,7 @@ ui/
   theme/    colour, typography, iconography, the stylesheet
   ribbon/   the command surface
   viewer/   the page canvas and its floating controls
+  dialogs/  one modal per command
   panels/   docked navigators and inspectors
   window/   the shell that wires it all together
 ```
@@ -18,10 +19,15 @@ ui/
 | Folder | Files | Responsibility |
 | --- | --- | --- |
 | `theme/` | `Theme`, `IconLibrary` | The single source of appearance: two palettes, a named type scale, ~90 inline SVG icons tinted per theme and state, the generated stylesheet, and drop shadows for floating surfaces. |
-| `ribbon/` | `RibbonBar` | Tab strip plus grouped action buttons. `RibbonPage` → `RibbonGroup` → `QAction`. Also hosts the application menu button and the always-visible toggles. |
-| `viewer/` | `PageView`, `PageItem`, `ViewerToolbar` | The scrolling canvas. A `QGraphicsScene` in PDF points, one `PageItem` per page, and a floating bar over the content. |
-| `panels/` | `Sidebar`, `ThumbnailPanel`, `OutlinePanel`, `PropertiesPanel` | The icon rail and its panels on the left, the inspector on the right. |
+| `ribbon/` | `RibbonBar` | Tab strip plus grouped action buttons. `RibbonPage` → `RibbonGroup` → `QAction` or a custom widget. Also hosts the application menu button and the always-visible toggles. |
+| `viewer/` | `PageView`, `PageItem`, `PageOverlay`, `FindBar`, `ViewerToolbar` | The scrolling canvas. A `QGraphicsScene` in PDF points, one `PageItem` per page, transient drawing (selection, search hits, the stroke or box being drawn) carried in a `PageOverlay`, and floating controls over the content. |
+| `dialogs/` | `SecurityDialog`, `ExportImagesDialog`, `WatermarkDialog`, `OcrDialog`, `SignatureDialog`, `PreferencesDialog`, `PageRangeInput` | One modal per command, each collecting exactly the settings that command needs and nothing else. `PageRangeInput` is the shared "1-4, 8" parser. |
+| `panels/` | `Sidebar`, `ThumbnailPanel`, `OutlinePanel`, `CommentsPanel`, `FormsPanel`, `PropertiesPanel` | The icon rail and its panels on the left, the inspector on the right. Panels read the document and rebuild from it rather than tracking edits; rebuilds are coalesced through a timer. |
 | `window/` | `MainWindow`, `WelcomeView` | Actions and shortcuts, the application menu, document tabs, the status bar, recent files, drag and drop, and the empty state. |
+
+Panels never open a file dialog: a panel that needs one (extract these pages,
+insert a file here) emits a signal that `MainWindow` answers, which keeps the
+question of "where does this file come from" in one place.
 
 ## Rules that keep the look consistent
 

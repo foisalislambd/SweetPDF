@@ -1,13 +1,18 @@
 #pragma once
 
+#include "ui/viewer/PageOverlay.h"
+
 #include <QGraphicsItem>
 #include <QImage>
+#include <QTransform>
 
 namespace sweet::core {
 class DocumentSession;
 }
 
 namespace sweet::ui {
+
+struct Palette;
 
 /// One page on the canvas.
 ///
@@ -38,12 +43,25 @@ public:
     /// Drops the kept bitmap so the next paint renders from scratch.
     void discardBitmap();
 
+    /// Selection, search hits and in-progress drawing for this page.
+    void setOverlay(const PageOverlay &overlay);
+    const PageOverlay &overlay() const noexcept { return m_overlay; }
+
+    /// Maps unrotated page points to item coordinates. The item is laid out in
+    /// the rotated view, so these differ whenever the view is rotated.
+    QTransform pageToItem() const;
+    QPointF toPagePoint(const QPointF &itemPoint) const;
+    QRectF toPageRect(const QRectF &itemRect) const;
+
 private:
+    void paintOverlay(QPainter *painter, const Palette &colors);
+
     sweet::core::DocumentSession *m_session = nullptr;
     int m_pageIndex = 0;
     QSizeF m_sizePoints;
     QImage m_bitmap;      ///< Last bitmap received, possibly at a stale scale.
     qreal m_bitmapScale = 0.0;
+    PageOverlay m_overlay;
 };
 
 } // namespace sweet::ui

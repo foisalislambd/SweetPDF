@@ -7,6 +7,8 @@
 #include <QFile>
 #include <QFileInfo>
 
+#include <algorithm>
+
 namespace sweet::core {
 namespace {
 
@@ -63,6 +65,7 @@ PdfDocument::PdfDocument(fz_document *document, QString path)
     , m_filePath(std::move(path))
 {
     fz_context *ctx = MuContext::forThread();
+    m_pdf = pdf_specifics(ctx, m_document);
 
     fz_try(ctx)
         m_pageCount = fz_count_pages(ctx, m_document);
@@ -109,8 +112,70 @@ std::shared_ptr<PdfDocument> PdfDocument::open(const QString &path, const QStrin
         }
     }
 
+    return adopt(document, path);
+}
+
+std::shared_ptr<PdfDocument> PdfDocument::adopt(fz_document *document, QString path,
+                                                QByteArray backingBytes)
+{
     // Cannot use make_shared: the constructor is private.
-    return std::shared_ptr<PdfDocument>(new PdfDocument(document, path));
+    auto wrapped = std::shared_ptr<PdfDocument>(new PdfDocument(document, std::move(path)));
+    wrapped->m_backingBytes = std::move(backingBytes);
+    return wrapped;
+}
+
+std::shared_ptr<PdfDocument> PdfDocument::openFromBytes(QByteArray bytes, QString displayPath)
+{
+    fz_context *ctx = MuContext::forThread();
+
+    fz_buffer *buffer = nullptr;
+    fz_stream *stream = nullptr;
+    fz_document *document = nullptr;
+    fz_var(buffer);
+    fz_var(stream);
+    fz_var(document);
+    fz_try(ctx) {
+        // The buffer borrows the QByteArray, which the document keeps alive.
+        buffer = fz_new_buffer_from_shared_data(
+            ctx, reinterpret_cast<const unsigned char *>(bytes.constData()), size_t(bytes.size()));
+        stream = fz_open_buffer(ctx, buffer);
+        document = fz_open_document_with_stream(ctx, "application/pdf", stream);
+    }
+    fz_always(ctx) {
+        fz_drop_stream(ctx, stream);
+        fz_drop_buffer(ctx, buffer);
+    }
+    fz_catch(ctx)
+        MuContext::raise(ctx, QStringLiteral("Could not re-open the edited document"));
+
+    return adopt(document, std::move(displayPath), std::move(bytes));
+}
+
+std::shared_ptr<PdfDocument> PdfDocument::createEmpty(const QSizeF &pageSizePoints)
+{
+    fz_context *ctx = MuContext::forThread();
+
+    pdf_document *pdf = nullptr;
+    pdf_obj *pageObject = nullptr;
+    fz_var(pdf);
+    fz_var(pageObject);
+    fz_try(ctx) {
+        pdf = pdf_create_document(ctx);
+        const fz_rect mediabox = fz_make_rect(0, 0, float(pageSizePoints.width()),
+                                              float(pageSizePoints.height()));
+        pageObject = pdf_add_page(ctx, pdf, mediabox, 0, nullptr, nullptr);
+        pdf_insert_page(ctx, pdf, 0, pageObject);
+    }
+    fz_always(ctx)
+        pdf_drop_obj(ctx, pageObject);
+    fz_catch(ctx) {
+        pdf_drop_document(ctx, pdf);
+        MuContext::raise(ctx, QStringLiteral("Could not create an empty document"));
+    }
+
+    auto created = adopt(reinterpret_cast<fz_document *>(pdf), QString());
+    created->m_edited = true;
+    return created;
 }
 
 bool PdfDocument::needsPassword(const QString &path)
@@ -205,6 +270,465 @@ QSizeF PdfDocument::pageSizePoints(int index) const
     if (index < 0 || index >= m_pageSizes.size())
         return {};
     return m_pageSizes.at(index);
+}
+
+// --- Editing ---------------------------------------------------------------
+
+namespace {
+
+int permissionBits(const DocumentPermissions &permissions)
+{
+    int bits = 0;
+    if (permissions.print)
+        bits |= PDF_PERM_PRINT | PDF_PERM_PRINT_HQ;
+    if (permissions.modify)
+        bits |= PDF_PERM_MODIFY;
+    if (permissions.copy)
+        bits |= PDF_PERM_COPY;
+    if (permissions.annotate)
+        bits |= PDF_PERM_ANNOTATE;
+    if (permissions.form)
+        bits |= PDF_PERM_FORM;
+    if (permissions.assemble)
+        bits |= PDF_PERM_ASSEMBLE;
+    return bits;
+}
+
+pdf_write_options toWriteOptions(const SaveOptions &options)
+{
+    pdf_write_options write = pdf_default_write_options;
+    write.do_incremental = options.incremental ? 1 : 0;
+    write.do_linear = options.linearise ? 1 : 0;
+    write.do_compress = options.compressStreams ? 1 : 0;
+    write.do_compress_images = options.compressStreams ? 1 : 0;
+    write.do_compress_fonts = options.compressStreams ? 1 : 0;
+    write.do_decompress = options.decompressStreams ? 1 : 0;
+    write.do_clean = options.cleanContentStreams ? 1 : 0;
+    write.do_sanitize = options.cleanContentStreams ? 1 : 0;
+    // Garbage collection renumbers objects, which an incremental save cannot do.
+    write.do_garbage = (options.garbageCollect && !options.incremental) ? 3 : 0;
+
+    switch (options.encryption) {
+    case SaveOptions::Encryption::Keep:
+        write.do_encrypt = PDF_ENCRYPT_KEEP;
+        break;
+    case SaveOptions::Encryption::None:
+        write.do_encrypt = PDF_ENCRYPT_NONE;
+        break;
+    case SaveOptions::Encryption::Aes128:
+        write.do_encrypt = PDF_ENCRYPT_AES_128;
+        break;
+    case SaveOptions::Encryption::Aes256:
+        write.do_encrypt = PDF_ENCRYPT_AES_256;
+        break;
+    }
+
+    if (options.encryption != SaveOptions::Encryption::Keep
+        && options.encryption != SaveOptions::Encryption::None) {
+        write.permissions = permissionBits(options.permissions);
+        const QByteArray user = options.userPassword.toUtf8();
+        const QByteArray owner = options.ownerPassword.toUtf8();
+        qstrncpy(write.upwd_utf8, user.constData(), sizeof(write.upwd_utf8));
+        qstrncpy(write.opwd_utf8, owner.constData(), sizeof(write.opwd_utf8));
+    }
+
+    return write;
+}
+
+/// Serialises `pdf` into a QByteArray.
+QByteArray writeToBytes(fz_context *ctx, pdf_document *pdf, const pdf_write_options &options)
+{
+    fz_buffer *buffer = nullptr;
+    fz_output *output = nullptr;
+    fz_var(buffer);
+    fz_var(output);
+
+    QByteArray bytes;
+    fz_try(ctx) {
+        buffer = fz_new_buffer(ctx, 64 * 1024);
+        output = fz_new_output_with_buffer(ctx, buffer);
+        pdf_write_document(ctx, pdf, output, &options);
+        fz_close_output(ctx, output);
+
+        unsigned char *data = nullptr;
+        const size_t size = fz_buffer_storage(ctx, buffer, &data);
+        bytes = QByteArray(reinterpret_cast<const char *>(data), qsizetype(size));
+    }
+    fz_always(ctx) {
+        fz_drop_output(ctx, output);
+        fz_drop_buffer(ctx, buffer);
+    }
+    fz_catch(ctx)
+        MuContext::raise(ctx, QStringLiteral("Could not write the document"));
+
+    return bytes;
+}
+
+} // namespace
+
+pdf_document *PdfDocument::requirePdf() const
+{
+    if (!m_pdf) {
+        throw MuError(QStringLiteral("This file format can be viewed but not edited. "
+                                     "Save it as a PDF first."));
+    }
+    return m_pdf;
+}
+
+void PdfDocument::markEdited()
+{
+    m_edited = true;
+}
+
+bool PdfDocument::hasUnsavedChanges() const
+{
+    if (m_edited)
+        return true;
+    if (!m_pdf)
+        return false;
+    return pdf_has_unsaved_changes(MuContext::forThread(), m_pdf) != 0;
+}
+
+QByteArray PdfDocument::toBytes(const SaveOptions &options) const
+{
+    pdf_document *pdf = requirePdf();
+    const std::lock_guard<std::mutex> guard(m_parseMutex);
+
+    // An incremental write only makes sense against a file; in memory there is
+    // nothing to append to.
+    SaveOptions inMemory = options;
+    inMemory.incremental = false;
+    return writeToBytes(MuContext::forThread(), pdf, toWriteOptions(inMemory));
+}
+
+void PdfDocument::saveToFile(const QString &path, const SaveOptions &options) const
+{
+    pdf_document *pdf = requirePdf();
+    fz_context *ctx = MuContext::forThread();
+    const std::lock_guard<std::mutex> guard(m_parseMutex);
+
+    SaveOptions effective = options;
+    if (effective.incremental && path != m_filePath)
+        effective.incremental = false;
+
+    const pdf_write_options write = toWriteOptions(effective);
+    const QByteArray nativePath = QFile::encodeName(path);
+
+    fz_try(ctx)
+        pdf_save_document(ctx, pdf, nativePath.constData(), &write);
+    fz_catch(ctx)
+        MuContext::raise(ctx, QStringLiteral("Could not save %1").arg(QFileInfo(path).fileName()));
+}
+
+int PdfDocument::pageRotation(int index) const
+{
+    if (!m_pdf || index < 0 || index >= m_pageCount)
+        return 0;
+
+    fz_context *ctx = MuContext::forThread();
+    const std::lock_guard<std::mutex> guard(m_parseMutex);
+
+    int rotation = 0;
+    fz_var(rotation);
+    fz_try(ctx) {
+        pdf_obj *pageObject = pdf_lookup_page_obj(ctx, m_pdf, index);
+        rotation = pdf_dict_get_inheritable_int(ctx, pageObject, PDF_NAME(Rotate));
+    }
+    fz_catch(ctx)
+        rotation = 0;
+    return ((rotation % 360) + 360) % 360;
+}
+
+void PdfDocument::setPageRotation(int index, int degrees)
+{
+    pdf_document *pdf = requirePdf();
+    if (index < 0 || index >= m_pageCount)
+        return;
+
+    fz_context *ctx = MuContext::forThread();
+    const int normalised = ((degrees % 360) + 360) % 360;
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_try(ctx) {
+            pdf_obj *pageObject = pdf_lookup_page_obj(ctx, pdf, index);
+            pdf_dict_put_int(ctx, pageObject, PDF_NAME(Rotate), normalised);
+        }
+        fz_catch(ctx)
+            MuContext::raise(ctx, QStringLiteral("Could not rotate page %1").arg(index + 1));
+    }
+    markEdited();
+}
+
+void PdfDocument::deletePages(QList<int> indices)
+{
+    pdf_document *pdf = requirePdf();
+    if (indices.isEmpty())
+        return;
+
+    std::sort(indices.begin(), indices.end());
+    indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+    if (indices.size() >= m_pageCount)
+        throw MuError(QStringLiteral("A document must keep at least one page"));
+
+    fz_context *ctx = MuContext::forThread();
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_try(ctx) {
+            // Back to front, so each removal leaves the earlier indices valid.
+            for (auto it = indices.crbegin(); it != indices.crend(); ++it) {
+                if (*it >= 0 && *it < m_pageCount)
+                    pdf_delete_page(ctx, pdf, *it);
+            }
+        }
+        fz_catch(ctx)
+            MuContext::raise(ctx, QStringLiteral("Could not delete the selected pages"));
+    }
+    markEdited();
+}
+
+void PdfDocument::insertBlankPage(int at, const QSizeF &sizePoints)
+{
+    pdf_document *pdf = requirePdf();
+    fz_context *ctx = MuContext::forThread();
+    const int position = qBound(0, at, m_pageCount);
+
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        pdf_obj *pageObject = nullptr;
+        fz_var(pageObject);
+        fz_try(ctx) {
+            const fz_rect mediabox = fz_make_rect(0, 0, float(sizePoints.width()),
+                                                  float(sizePoints.height()));
+            pageObject = pdf_add_page(ctx, pdf, mediabox, 0, nullptr, nullptr);
+            pdf_insert_page(ctx, pdf, position, pageObject);
+        }
+        fz_always(ctx)
+            pdf_drop_obj(ctx, pageObject);
+        fz_catch(ctx)
+            MuContext::raise(ctx, QStringLiteral("Could not insert a page"));
+    }
+    markEdited();
+}
+
+void PdfDocument::movePage(int from, int to)
+{
+    pdf_document *pdf = requirePdf();
+    if (from < 0 || from >= m_pageCount || from == to)
+        return;
+
+    fz_context *ctx = MuContext::forThread();
+    const int target = qBound(0, to, m_pageCount - 1);
+
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        pdf_obj *pageObject = nullptr;
+        fz_var(pageObject);
+        fz_try(ctx) {
+            // Keep a reference: deleting the page drops the tree's own.
+            pageObject = pdf_keep_obj(ctx, pdf_lookup_page_obj(ctx, pdf, from));
+            pdf_delete_page(ctx, pdf, from);
+            pdf_insert_page(ctx, pdf, target, pageObject);
+        }
+        fz_always(ctx)
+            pdf_drop_obj(ctx, pageObject);
+        fz_catch(ctx)
+            MuContext::raise(ctx, QStringLiteral("Could not move page %1").arg(from + 1));
+    }
+    markEdited();
+}
+
+void PdfDocument::reorderPages(const QList<int> &newOrder)
+{
+    requirePdf();
+    if (newOrder.size() != m_pageCount)
+        throw MuError(QStringLiteral("The new page order does not cover every page"));
+
+    // `current` tracks where each original page sits now, so each page is moved
+    // at most once and no index goes stale.
+    QList<int> current(m_pageCount);
+    for (int index = 0; index < m_pageCount; ++index)
+        current[index] = index;
+
+    for (int target = 0; target < m_pageCount; ++target) {
+        const int wanted = newOrder.at(target);
+        const int at = int(current.indexOf(wanted));
+        if (at < 0 || at == target)
+            continue;
+        movePage(at, target);
+        current.move(at, target);
+    }
+}
+
+QByteArray PdfDocument::extractPages(const QList<int> &indices) const
+{
+    pdf_document *source = requirePdf();
+    if (indices.isEmpty())
+        throw MuError(QStringLiteral("No pages were selected"));
+
+    fz_context *ctx = MuContext::forThread();
+    const std::lock_guard<std::mutex> guard(m_parseMutex);
+
+    pdf_document *destination = nullptr;
+    pdf_graft_map *map = nullptr;
+    fz_var(destination);
+    fz_var(map);
+
+    QByteArray bytes;
+    fz_try(ctx) {
+        destination = pdf_create_document(ctx);
+        map = pdf_new_graft_map(ctx, destination);
+        for (const int index : indices) {
+            if (index >= 0 && index < m_pageCount)
+                pdf_graft_mapped_page(ctx, map, -1, source, index);
+        }
+        bytes = writeToBytes(ctx, destination, pdf_default_write_options);
+    }
+    fz_always(ctx) {
+        pdf_drop_graft_map(ctx, map);
+        pdf_drop_document(ctx, destination);
+    }
+    fz_catch(ctx)
+        MuContext::raise(ctx, QStringLiteral("Could not extract the selected pages"));
+
+    return bytes;
+}
+
+void PdfDocument::duplicatePage(int index)
+{
+    if (index < 0 || index >= m_pageCount)
+        return;
+
+    // Round-tripping through a one-page document avoids grafting a document into
+    // itself, which MuPDF's graft map is not built for.
+    const QByteArray single = extractPages({ index });
+    pdf_document *destination = requirePdf();
+    fz_context *ctx = MuContext::forThread();
+
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_buffer *buffer = nullptr;
+        fz_stream *stream = nullptr;
+        pdf_document *source = nullptr;
+        pdf_graft_map *map = nullptr;
+        fz_var(buffer);
+        fz_var(stream);
+        fz_var(source);
+        fz_var(map);
+        fz_try(ctx) {
+            buffer = fz_new_buffer_from_copied_data(
+                ctx, reinterpret_cast<const unsigned char *>(single.constData()),
+                size_t(single.size()));
+            stream = fz_open_buffer(ctx, buffer);
+            source = pdf_open_document_with_stream(ctx, stream);
+            map = pdf_new_graft_map(ctx, destination);
+            pdf_graft_mapped_page(ctx, map, index + 1, source, 0);
+        }
+        fz_always(ctx) {
+            pdf_drop_graft_map(ctx, map);
+            pdf_drop_document(ctx, source);
+            fz_drop_stream(ctx, stream);
+            fz_drop_buffer(ctx, buffer);
+        }
+        fz_catch(ctx)
+            MuContext::raise(ctx, QStringLiteral("Could not duplicate page %1").arg(index + 1));
+    }
+    markEdited();
+}
+
+void PdfDocument::appendPagesFrom(const QString &path, const QString &password)
+{
+    pdf_document *destination = requirePdf();
+    fz_context *ctx = MuContext::forThread();
+    const QByteArray nativePath = QFile::encodeName(path);
+
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_document *opened = nullptr;
+        pdf_graft_map *map = nullptr;
+        fz_var(opened);
+        fz_var(map);
+        fz_try(ctx) {
+            opened = fz_open_document(ctx, nativePath.constData());
+            if (fz_needs_password(ctx, opened)) {
+                const QByteArray utf8 = password.toUtf8();
+                if (!fz_authenticate_password(ctx, opened, utf8.constData()))
+                    fz_throw(ctx, FZ_ERROR_GENERIC, "wrong password");
+            }
+
+            pdf_document *source = pdf_specifics(ctx, opened);
+            if (!source)
+                fz_throw(ctx, FZ_ERROR_GENERIC, "not a PDF");
+
+            map = pdf_new_graft_map(ctx, destination);
+            const int count = pdf_count_pages(ctx, source);
+            for (int index = 0; index < count; ++index)
+                pdf_graft_mapped_page(ctx, map, -1, source, index);
+        }
+        fz_always(ctx) {
+            pdf_drop_graft_map(ctx, map);
+            fz_drop_document(ctx, opened);
+        }
+        fz_catch(ctx)
+            MuContext::raise(ctx, QStringLiteral("Could not merge %1")
+                                      .arg(QFileInfo(path).fileName()));
+    }
+    markEdited();
+}
+
+bool PdfDocument::applyRedactions(int pageIndex)
+{
+    pdf_document *pdf = requirePdf();
+    if (pageIndex < 0 || pageIndex >= m_pageCount)
+        return false;
+
+    fz_context *ctx = MuContext::forThread();
+    bool changed = false;
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        pdf_page *page = nullptr;
+        fz_var(page);
+        fz_var(changed);
+        fz_try(ctx) {
+            page = pdf_load_page(ctx, pdf, pageIndex);
+            pdf_redact_options options{};
+            options.black_boxes = 0; // The redaction annotation already paints one.
+            options.image_method = PDF_REDACT_IMAGE_PIXELS;
+            changed = pdf_redact_page(ctx, pdf, page, &options) != 0;
+        }
+        fz_always(ctx)
+            fz_drop_page(ctx, reinterpret_cast<fz_page *>(page));
+        fz_catch(ctx)
+            MuContext::raise(ctx, QStringLiteral("Could not apply redactions on page %1")
+                                      .arg(pageIndex + 1));
+    }
+
+    if (changed)
+        markEdited();
+    return changed;
+}
+
+void PdfDocument::refreshStructure()
+{
+    fz_context *ctx = MuContext::forThread();
+
+    {
+        const std::lock_guard<std::mutex> guard(m_pageMutex);
+        m_pages.clear();
+    }
+
+    fz_try(ctx)
+        m_pageCount = fz_count_pages(ctx, m_document);
+    fz_catch(ctx)
+        m_pageCount = 0;
+
+    m_pages.resize(m_pageCount);
+    m_pageSizes.clear();
+    m_maxPageSize = QSizeF();
+    m_outline.clear();
+
+    readPageSizes();
+    readInfo();
+    readOutline();
 }
 
 std::shared_ptr<PdfPage> PdfDocument::page(int index) const

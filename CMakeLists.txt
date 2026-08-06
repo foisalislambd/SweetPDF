@@ -39,7 +39,7 @@ else()
     endif()
 endif()
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Svg Concurrent)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Svg Concurrent PrintSupport)
 qt_standard_project_setup()
 
 find_package(MuPDF REQUIRED)

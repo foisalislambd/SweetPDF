@@ -13,6 +13,8 @@ class DocumentSession;
 
 namespace sweet::ui {
 
+class CommentsPanel;
+class FormsPanel;
 class OutlinePanel;
 class ThumbnailPanel;
 
@@ -26,7 +28,7 @@ class Sidebar : public QWidget
     Q_OBJECT
 
 public:
-    enum class Panel { Pages, Bookmarks, Comments, Attachments, Layers };
+    enum class Panel { Pages, Bookmarks, Comments, Forms, Attachments, Layers };
 
     explicit Sidebar(QWidget *parent = nullptr);
 
@@ -43,6 +45,16 @@ public Q_SLOTS:
 Q_SIGNALS:
     void panelVisibilityChanged(bool visible);
 
+    /// A comment was picked in the comments panel, or a form field in the forms
+    /// panel; both mean "show me this on the page".
+    void annotationActivated(int pageIndex, int objectNumber);
+
+    /// Page operations from the thumbnail panel that need a dialog, forwarded to
+    /// the window: a panel has no business opening file dialogs.
+    void extractRequested(const QList<int> &pages);
+    void insertFileRequested(int atPage);
+    void statusMessage(const QString &message);
+
 private:
     void addRailButton(Panel panel, const QString &iconName, const QString &label);
 
@@ -54,6 +66,8 @@ private:
 
     ThumbnailPanel *m_thumbnails = nullptr;
     OutlinePanel *m_outline = nullptr;
+    CommentsPanel *m_comments = nullptr;
+    FormsPanel *m_forms = nullptr;
 
     Panel m_currentPanel = Panel::Pages;
 };

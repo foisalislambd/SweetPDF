@@ -4,10 +4,48 @@ An all-in-one, open source PDF editor for Linux, Windows and macOS. Written in
 C++20 with Qt 6 and MuPDF, aiming to be a genuine alternative to Acrobat rather
 than another read-only viewer.
 
-> Status: early development. The viewer core (open, render, navigate, zoom,
-> rotate, thumbnails, bookmarks, document properties) works. Editing, markup,
-> OCR and the conversion tools are scaffolded in the UI and marked as planned
-> until they are implemented.
+> Status: usable. Viewing, text selection and search, markup, page organisation,
+> form filling, signatures, redaction, encryption, OCR and export all work.
+> Editing existing text runs is done by replacing them (redact and retype)
+> rather than by re-flowing the original text.
+
+## What it does
+
+**Read** — open PDF, XPS, EPUB, CBZ and SVG; continuous, single and two-page
+layouts; fit page or width; animated zoom and scrolling; thumbnails, bookmarks
+and document properties; clickable links; tabs, recent files and session
+restore; light and dark themes.
+
+**Select and search** — character-accurate text selection with word and line
+snapping, copy, select all, and a find bar with whole-word and case-sensitive
+matching that highlights hits across the whole document.
+
+**Mark up** — highlight, underline, strikeout, freehand ink, sticky notes, text
+boxes, rectangles and ellipses, with a shared colour and opacity, all written as
+real PDF annotations. The comments panel lists every one of them.
+
+**Edit content** — add pictures, replace a picture you placed, add links to a URL
+or another page, and replace selected text (the old glyphs are redacted away, not
+just covered).
+
+**Organise pages** — insert blank pages or pages from another file, delete,
+duplicate, reorder by dragging thumbnails, rotate, extract, merge and split.
+
+**Fill in forms** — the forms panel lists every field page by page with the right
+editor for its type, values are written straight into the document, and the form
+can be reset or flattened.
+
+**Sign** — draw a signature, type your name, or import a picture of one; place it
+by dragging a box or drop it on every page at once.
+
+**Protect** — AES-128 and AES-256 encryption with per-operation permissions, true
+redaction that removes the content underneath, and watermarks.
+
+**Convert** — OCR to a searchable PDF through Tesseract, export pages as images,
+plain text or HTML, print, and compress.
+
+Every edit is one step on the undo stack, including page operations, which are
+undone by restoring the document exactly as it was.
 
 ## Why these libraries
 
@@ -27,15 +65,18 @@ MuPDF is AGPL-3.0, so SweetPDF is AGPL-3.0 as well.
 ```
 src/
   core/           Document model and rendering. Qt Core/Gui only, no widgets.
-    pdf/          The MuPDF boundary: documents, pages, rasterising, text
+    pdf/          The MuPDF boundary: documents, pages, text, annotations,
+                  forms, pictures and links, export
     render/       Bitmap cache and worker queue
-    session/      Per-document state and undo history
+    session/      Per-document state, undo commands and history
     util/         Logging categories
   ui/             Everything visual
     theme/        Colour, typography, icons, stylesheet
     ribbon/       The command surface
-    viewer/       Page canvas and floating controls
-    panels/       Sidebar, thumbnails, outline, properties
+    viewer/       Page canvas, overlays and floating controls
+    dialogs/      One modal per command: security, export, watermark, OCR,
+                  signature, settings
+    panels/       Sidebar, thumbnails, outline, comments, forms, properties
     window/       Main window, welcome screen
   app/            main() and platform packaging
 resources/        Application icon
@@ -108,6 +149,13 @@ cmake --build build
 | Action | Shortcut |
 | --- | --- |
 | Open | `Ctrl+O` |
+| Save / save as | `Ctrl+S` / `Ctrl+Shift+S` |
+| Print | `Ctrl+P` |
+| Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
+| Find / next / previous | `Ctrl+F` / `F3` / `Shift+F3` |
+| Copy / select all | `Ctrl+C` / `Ctrl+A` |
+| Delete selected comment | `Delete` |
+| Cancel placement or selection | `Esc` |
 | Close document | `Ctrl+W` |
 | Zoom in / out | `Ctrl++` / `Ctrl+-` |
 | Actual size | `Ctrl+0` |
@@ -121,14 +169,18 @@ cmake --build build
 ## Roadmap
 
 1. **Viewer core** — open, render, navigate, thumbnails, bookmarks, properties. *Done.*
-2. **Text selection and search** — selection layer, find bar, cross-page results.
-3. **Markup** — highlight, underline, strikeout, ink, notes, saved as real PDF annotations.
-4. **Page organisation** — insert, delete, reorder, rotate, extract, merge, split via QPDF.
-5. **Content editing** — edit existing text runs and images, add text boxes and images.
-6. **OCR** — Tesseract with an invisible text layer, per page or per document.
-7. **Forms and signatures** — AcroForm filling, appearance streams, signing.
-8. **Protection** — encryption, permissions, true redaction.
-9. **Conversion** — export to image, HTML and Office formats.
+2. **Text selection and search** — selection layer, find bar, cross-page results. *Done.*
+3. **Markup** — highlight, underline, strikeout, ink, notes, saved as real PDF annotations. *Done.*
+4. **Page organisation** — insert, delete, reorder, rotate, extract, merge, split. *Done.*
+5. **OCR** — Tesseract with an invisible text layer, per page or per document. *Done.*
+6. **Forms and signatures** — AcroForm filling, flattening, signature stamps. *Done.*
+7. **Protection** — encryption, permissions, true redaction, watermarks. *Done.*
+8. **Export** — images, plain text, HTML, printing, compression. *Done.*
+9. **Real text editing** — re-flow existing text runs with their original fonts,
+   instead of replacing them with a text box.
+10. **Cryptographic signatures** — PKCS#7 signing and validation of signature fields.
+11. **Conversion** — Office formats, in and out.
+12. **Attachments and layers** — the two sidebar panels that are still placeholders.
 
 ## Contributing
 
