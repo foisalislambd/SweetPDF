@@ -150,9 +150,20 @@ int main(int argc, char *argv[])
     // Lets a screenshot show a tool's settings, which only appear once that tool
     // is picked: --tool=toolHighlight, --tool=toolDraw, and so on.
     QString toolId;
+    QSize windowSize(1440, 900);
     for (const QString &argument : arguments.mid(1)) {
         if (argument.startsWith(QLatin1String("--tool="))) {
             toolId = argument.section(QLatin1Char('='), 1);
+            continue;
+        }
+        if (argument.startsWith(QLatin1String("--size="))) {
+            const QStringList parts = argument.section(QLatin1Char('='), 1).split(QLatin1Char('x'));
+            if (parts.size() == 2) {
+                const int width = parts[0].toInt();
+                const int height = parts[1].toInt();
+                if (width >= 640 && height >= 480)
+                    windowSize = QSize(width, height);
+            }
             continue;
         }
         if (argument.startsWith(QLatin1String("--")))
@@ -193,7 +204,7 @@ int main(int argc, char *argv[])
     // is the only order the widgets support.
     {
         sweet::ui::MainWindow window;
-        window.resize(1440, 900);
+        window.resize(windowSize);
         window.show();
         spin(200);
 

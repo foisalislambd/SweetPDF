@@ -17,7 +17,6 @@ namespace sweet::ui {
 namespace {
 
 constexpr int railWidth = 68;
-constexpr int defaultPanelWidth = 208;
 
 QWidget *makePlaceholder(const QString &iconName, const QString &title, const QString &hint,
                          QWidget *parent)
@@ -144,7 +143,7 @@ Sidebar::Sidebar(QWidget *parent)
         collapse->setIcon(icon(QStringLiteral("chevron-left")));
     });
 
-    m_content->setMinimumWidth(defaultPanelWidth);
+    m_content->setMinimumWidth(160);
     showPanel(Panel::Pages);
 }
 

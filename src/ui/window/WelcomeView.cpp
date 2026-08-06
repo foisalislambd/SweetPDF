@@ -3,6 +3,7 @@
 #include "ui/theme/Theme.h"
 
 #include <QApplication>
+#include <QBoxLayout>
 #include <QClipboard>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -17,6 +18,7 @@
 #include <QMouseEvent>
 #include <QPixmap>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QScrollArea>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -26,10 +28,10 @@
 namespace sweet::ui {
 namespace {
 
-constexpr int contentWidth = 1080;
+constexpr int contentWidthCap = 1080;
 constexpr int guideWidth = 320;
 constexpr int recentLimit = 12;
-constexpr int tileColumns = 4;
+constexpr int defaultTileColumns = 4;
 
 /// Labels and glyphs remember which palette entry they were built from, so a
 /// theme flip is a walk over the children instead of rebuilding the page.
@@ -222,27 +224,83 @@ WelcomeView::WelcomeView(QWidget *parent)
     centering->setContentsMargins(40, 34, 40, 40);
     centering->addStretch(1);
 
-    auto *column = new QWidget(page);
-    column->setMaximumWidth(contentWidth);
-    auto *layout = new QVBoxLayout(column);
+    m_column = new QWidget(page);
+    m_column->setMaximumWidth(contentWidthCap);
+    auto *layout = new QVBoxLayout(m_column);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(28);
     // The column keeps the maximum width above; the spacers only take what is
     // left over on a wide window, which is what centres it.
-    centering->addWidget(column, 10);
+    centering->addWidget(m_column, 10);
     centering->addStretch(1);
 
     buildHeader(layout);
     buildTiles(layout);
 
-    auto *lower = new QHBoxLayout;
-    lower->setSpacing(24);
-    lower->addWidget(buildRecentSection(), 1);
-    lower->addWidget(buildGuideSection(), 0, Qt::AlignTop);
-    layout->addLayout(lower, 1);
+    m_lower = new QBoxLayout(QBoxLayout::LeftToRight);
+    m_lower->setSpacing(24);
+    m_lower->addWidget(buildRecentSection(), 1);
+    m_guide = buildGuideSection();
+    m_lower->addWidget(m_guide, 0, Qt::AlignTop);
+    layout->addLayout(m_lower, 1);
     layout->addStretch(1);
 
     connect(&Theme::instance(), &Theme::changed, this, &WelcomeView::retint);
+    relayout();
+}
+
+void WelcomeView::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    relayout();
+}
+
+void WelcomeView::relayout()
+{
+    if (!m_column || !m_lower || !m_guide || !m_tileGrid)
+        return;
+
+    constexpr int sideMargins = 80;
+    const int available = qMax(320, width() - sideMargins);
+    m_column->setMaximumWidth(qMin(contentWidthCap, available));
+
+    int columns = 4;
+    if (available < 640)
+        columns = 1;
+    else if (available < 1000)
+        columns = 2;
+    placeTiles(columns);
+
+    if (available < 1000) {
+        m_lower->setDirection(QBoxLayout::TopToBottom);
+        m_guide->setMinimumWidth(0);
+        m_guide->setMaximumWidth(QWIDGETSIZE_MAX);
+    } else {
+        m_lower->setDirection(QBoxLayout::LeftToRight);
+        m_guide->setFixedWidth(guideWidth);
+    }
+}
+
+void WelcomeView::placeTiles(int columns)
+{
+    if (!m_tileGrid || columns < 1 || columns == m_tileColumns)
+        return;
+
+    QList<QWidget *> tiles;
+    while (QLayoutItem *item = m_tileGrid->takeAt(0)) {
+        if (QWidget *widget = item->widget())
+            tiles.append(widget);
+        delete item;
+    }
+
+    for (int c = 0; c < m_tileColumns; ++c)
+        m_tileGrid->setColumnStretch(c, 0);
+
+    m_tileColumns = columns;
+    for (int index = 0; index < tiles.size(); ++index)
+        m_tileGrid->addWidget(tiles.at(index), index / columns, index % columns);
+    for (int c = 0; c < columns; ++c)
+        m_tileGrid->setColumnStretch(c, 1);
 }
 
 void WelcomeView::buildHeader(QVBoxLayout *column)
@@ -344,10 +402,11 @@ void WelcomeView::buildTiles(QVBoxLayout *column)
         inner->addWidget(blurb);
         inner->addStretch(1);
 
-        m_tileGrid->addWidget(tile, index / tileColumns, index % tileColumns);
+        m_tileGrid->addWidget(tile, index / defaultTileColumns, index % defaultTileColumns);
         ++index;
     }
-    for (int c = 0; c < tileColumns; ++c)
+    m_tileColumns = defaultTileColumns;
+    for (int c = 0; c < m_tileColumns; ++c)
         m_tileGrid->setColumnStretch(c, 1);
 
     column->addWidget(section);
@@ -368,7 +427,9 @@ QWidget *WelcomeView::buildRecentSection()
     m_filter = new QLineEdit(section);
     m_filter->setPlaceholderText(tr("Filter by name"));
     m_filter->setClearButtonEnabled(true);
-    m_filter->setFixedWidth(190);
+    m_filter->setMinimumWidth(120);
+    m_filter->setMaximumWidth(220);
+    m_filter->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     m_filter->addAction(icon(QStringLiteral("search")), QLineEdit::LeadingPosition);
     connect(m_filter, &QLineEdit::textChanged, this, [this] { rebuildRecentRows(); });
     header->addWidget(m_filter);

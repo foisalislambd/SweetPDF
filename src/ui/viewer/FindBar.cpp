@@ -46,7 +46,7 @@ FindBar::FindBar(core::DocumentSession *session, QWidget *parent)
     m_field = new QLineEdit(this);
     m_field->setPlaceholderText(tr("Find in document"));
     m_field->setClearButtonEnabled(true);
-    m_field->setMinimumWidth(220);
+    m_field->setMinimumWidth(140);
     row->addWidget(m_field);
 
     m_status = new QLabel(this);

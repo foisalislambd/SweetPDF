@@ -90,6 +90,9 @@ Q_SIGNALS:
     void currentIndexChanged(int index);
     void collapsedChanged(bool collapsed);
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 private:
     QHBoxLayout *m_leadingLayout = nullptr;
     QHBoxLayout *m_tabsLayout = nullptr;

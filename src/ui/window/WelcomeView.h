@@ -3,9 +3,11 @@
 #include <QStringList>
 #include <QWidget>
 
+class QBoxLayout;
 class QGridLayout;
 class QLabel;
 class QLineEdit;
+class QResizeEvent;
 class QVBoxLayout;
 
 namespace sweet::ui {
@@ -48,17 +50,25 @@ Q_SIGNALS:
     /// MainWindow or one of the composite tasks it handles itself.
     void toolRequested(const QString &toolId);
 
+protected:
+    void resizeEvent(QResizeEvent *event) override;
+
 private:
     void buildHeader(QVBoxLayout *column);
     void buildTiles(QVBoxLayout *column);
     QWidget *buildRecentSection();
     QWidget *buildGuideSection();
     void rebuildRecentRows();
+    void relayout();
+    void placeTiles(int columns);
 
     /// Re-applies palette colours after a theme change. Labels are coloured
     /// individually, which the global stylesheet cannot reach.
     void retint();
 
+    QWidget *m_column = nullptr;
+    QBoxLayout *m_lower = nullptr;
+    QWidget *m_guide = nullptr;
     QGridLayout *m_tileGrid = nullptr;
     QLineEdit *m_filter = nullptr;
     QWidget *m_recentRows = nullptr;
@@ -66,6 +76,7 @@ private:
     QWidget *m_dropZone = nullptr;
     QLabel *m_recentSummary = nullptr;
     QStringList m_recentFiles;
+    int m_tileColumns = 4;
 };
 
 } // namespace sweet::ui

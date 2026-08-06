@@ -1,8 +1,10 @@
 #pragma once
 
+#include <QList>
 #include <QWidget>
 
 class QComboBox;
+class QFrame;
 class QToolButton;
 
 namespace sweet::ui {
@@ -24,12 +26,16 @@ protected:
 
 private:
     void reposition();
+    void setCompact(bool compact);
     void syncZoomBox(qreal zoom);
     QToolButton *addButton(const QString &iconName, const QString &tooltip, bool checkable);
 
     PageView *m_view = nullptr;
     QComboBox *m_zoomBox = nullptr;
+    QFrame *m_fitDivider = nullptr;
+    QList<QToolButton *> m_fitButtons;
     bool m_syncingZoom = false;
+    bool m_compact = false;
 };
 
 } // namespace sweet::ui

@@ -43,8 +43,10 @@
 #include <QPrinter>
 #include <QProgressDialog>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QSaveFile>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QSlider>
 #include <QSplitter>
 #include <QStackedWidget>
@@ -87,6 +89,9 @@ MainWindow::MainWindow(QWidget *parent)
 {
     setWindowTitle(tr("SweetPDF"));
     setAcceptDrops(true);
+    // Narrower than this and the page area disappears under chrome; the layout
+    // modes below keep it usable from here up to a large monitor.
+    setMinimumSize(1024, 640);
     resize(1360, 880);
 
     createActions();
@@ -115,9 +120,14 @@ MainWindow::MainWindow(QWidget *parent)
     if (const QByteArray splitter = settings.value(QStringLiteral("splitter")).toByteArray();
         !splitter.isEmpty()) {
         m_splitter->restoreState(splitter);
+        clampSplitterSizes();
     }
     if (settings.value(QStringLiteral("darkMode"), false).toBool())
         action(QStringLiteral("toggleTheme"))->setChecked(true);
+
+    // Geometry may have been restored above; pick the chrome density for the
+    // actual width once, before any queued openFile calls run.
+    applyLayoutMode(true);
 
     if (settings.value(PreferencesDialog::restoreSessionKey(), true).toBool()) {
         // Opening is deferred so the window is on screen first: loading a large
@@ -813,7 +823,9 @@ void MainWindow::createCentralArea()
     setCentralWidget(central);
 
     m_splitter = new QSplitter(Qt::Horizontal, central);
-    m_splitter->setChildrenCollapsible(false);
+    // Panes can be dragged shut on a small window; the centre keeps a floor so
+    // the page never vanishes under the chrome.
+    m_splitter->setChildrenCollapsible(true);
     m_splitter->setHandleWidth(1);
     column->addWidget(m_splitter, 1);
 
@@ -821,6 +833,7 @@ void MainWindow::createCentralArea()
     m_splitter->addWidget(m_sidebar);
 
     m_center = new QStackedWidget(m_splitter);
+    m_center->setMinimumWidth(360);
     m_splitter->addWidget(m_center);
 
     m_tabs = new QTabWidget(m_center);
@@ -1175,8 +1188,106 @@ void MainWindow::showWelcomeIfEmpty()
     if (m_ribbon)
         m_ribbon->setVisible(!empty);
     m_sidebar->setVisible(!empty);
-    m_inspector->setVisible(!empty && action(QStringLiteral("toggleProperties"))->isChecked());
     statusBar()->setVisible(!empty);
+
+    if (empty) {
+        m_inspector->setVisible(false);
+    } else if (!m_layoutModeReady) {
+        applyLayoutMode(true);
+    } else {
+        // Welcome hid the inspector; put it back the way the last mode left it.
+        m_inspector->setVisible(action(QStringLiteral("toggleProperties"))->isChecked());
+    }
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    applyLayoutMode();
+}
+
+MainWindow::LayoutMode MainWindow::layoutModeForWidth(int width) const
+{
+    if (width < 1100)
+        return LayoutMode::Narrow;
+    if (width < 1400)
+        return LayoutMode::Compact;
+    return LayoutMode::Comfortable;
+}
+
+void MainWindow::applyLayoutMode(bool force)
+{
+    if (!m_ribbon || !m_sidebar || !m_inspector || !m_zoomSlider)
+        return;
+
+    // The home screen owns the whole window; chrome density only matters once a
+    // document is open.
+    if (m_tabs->count() == 0)
+        return;
+
+    const LayoutMode mode = layoutModeForWidth(width());
+    if (!force && m_layoutModeReady && mode == m_layoutMode)
+        return;
+
+    m_layoutMode = mode;
+    m_layoutModeReady = true;
+
+    const bool narrow = mode == LayoutMode::Narrow;
+    const bool comfortable = mode == LayoutMode::Comfortable;
+
+    m_ribbon->setCollapsed(narrow);
+    m_zoomSlider->setVisible(!narrow);
+
+    // Mode change resets panel visibility to the mode's defaults. Manual toggles
+    // after that stick until the next mode change.
+    const bool showSidebarPanel = comfortable;
+    const bool showInspector = comfortable;
+
+    {
+        QAction *toggle = action(QStringLiteral("toggleSidebar"));
+        const QSignalBlocker blocker(toggle);
+        toggle->setChecked(showSidebarPanel);
+        m_sidebar->setPanelVisible(showSidebarPanel);
+    }
+    {
+        QAction *toggle = action(QStringLiteral("toggleProperties"));
+        const QSignalBlocker blocker(toggle);
+        toggle->setChecked(showInspector);
+        m_inspector->setVisible(showInspector);
+    }
+
+    clampSplitterSizes();
+}
+
+void MainWindow::clampSplitterSizes()
+{
+    if (!m_splitter)
+        return;
+
+    QList<int> sizes = m_splitter->sizes();
+    if (sizes.size() < 3)
+        return;
+
+    const int total = sizes[0] + sizes[1] + sizes[2];
+    constexpr int minCenter = 360;
+    if (sizes[1] >= minCenter || total <= minCenter)
+        return;
+
+    // Steal from the side that currently takes more space so the page area
+    // keeps a usable width after a restored splitter state.
+    int deficit = minCenter - sizes[1];
+    sizes[1] = minCenter;
+    if (sizes[2] >= sizes[0] && sizes[2] > deficit) {
+        sizes[2] -= deficit;
+    } else if (sizes[0] > deficit) {
+        sizes[0] -= deficit;
+    } else {
+        const int fromLeft = qMin(sizes[0], deficit);
+        sizes[0] -= fromLeft;
+        deficit -= fromLeft;
+        sizes[2] = qMax(0, sizes[2] - deficit);
+    }
+    m_splitter->setSizes(sizes);
 }
 
 void MainWindow::runHomeTask(const QString &taskId)

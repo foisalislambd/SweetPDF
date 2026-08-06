@@ -4,11 +4,14 @@
 
 #include <QAction>
 #include <QButtonGroup>
+#include <QEvent>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QStackedWidget>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -117,13 +120,32 @@ RibbonPage::RibbonPage(QWidget *parent)
     : QWidget(parent)
 {
     setObjectName(QStringLiteral("RibbonPage"));
-    m_row = new QHBoxLayout(this);
+
+    auto *outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0);
+    outer->setSpacing(0);
+
+    // Wide Home tabs outgrow a compact window; scrolling keeps every group
+    // reachable instead of clipping the right-hand ones.
+    auto *scroll = new QScrollArea(this);
+    scroll->setObjectName(QStringLiteral("RibbonPageScroll"));
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidgetResizable(true);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setFocusPolicy(Qt::NoFocus);
+    outer->addWidget(scroll);
+
+    auto *content = new QWidget(scroll);
+    content->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
+    m_row = new QHBoxLayout(content);
     m_row->setContentsMargins(6, 2, 6, 2);
     m_row->setSpacing(0);
 
     // The trailing stretch is created up front and everything is inserted before
     // it, so groups always start at the left edge however many there are.
     m_row->addStretch(1);
+    scroll->setWidget(content);
 }
 
 RibbonGroup *RibbonPage::addGroup(const QString &title)
@@ -200,6 +222,19 @@ RibbonBar::RibbonBar(QWidget *parent)
     });
 }
 
+bool RibbonBar::eventFilter(QObject *watched, QEvent *event)
+{
+    // Double-clicking a tab collapses or expands the command area, the same
+    // gesture Office uses, independent of the window's auto layout mode.
+    if (event->type() == QEvent::MouseButtonDblClick) {
+        if (qobject_cast<QPushButton *>(watched)) {
+            setCollapsed(!m_collapsed);
+            return true;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
 RibbonPage *RibbonBar::addPage(const QString &title)
 {
     auto *page = new RibbonPage(m_pages);
@@ -210,6 +245,7 @@ RibbonPage *RibbonBar::addPage(const QString &title)
     tab->setCheckable(true);
     tab->setCursor(Qt::ArrowCursor);
     tab->setFocusPolicy(Qt::TabFocus);
+    tab->installEventFilter(this);
     m_tabs->addButton(tab, index);
     m_tabsLayout->addWidget(tab);
 

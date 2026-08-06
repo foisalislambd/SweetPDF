@@ -8,12 +8,14 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLineEdit>
+#include <QSignalBlocker>
 #include <QToolButton>
 
 namespace sweet::ui {
 namespace {
 
 constexpr int bottomMargin = 18;
+constexpr int sideMargin = 16;
 
 const QList<int> zoomPresets = { 25, 50, 75, 100, 125, 150, 200, 300, 400, 800 };
 
@@ -92,18 +94,20 @@ ViewerToolbar::ViewerToolbar(PageView *view)
     QToolButton *zoomIn = addButton(QStringLiteral("plus"), tr("Zoom in (Ctrl++)"), false);
     connect(zoomIn, &QToolButton::clicked, view, &PageView::zoomIn);
 
-    auto *divider2 = new QFrame(this);
-    divider2->setFrameShape(QFrame::VLine);
-    divider2->setFixedWidth(1);
+    m_fitDivider = new QFrame(this);
+    m_fitDivider->setFrameShape(QFrame::VLine);
+    m_fitDivider->setFixedWidth(1);
     row->addSpacing(4);
-    row->addWidget(divider2);
+    row->addWidget(m_fitDivider);
     row->addSpacing(4);
 
     QToolButton *fitPage = addButton(QStringLiteral("fit-page"), tr("Fit page"), false);
     connect(fitPage, &QToolButton::clicked, view, &PageView::fitPage);
+    m_fitButtons.append(fitPage);
 
     QToolButton *fitWidth = addButton(QStringLiteral("fit-width"), tr("Fit width"), false);
     connect(fitWidth, &QToolButton::clicked, view, &PageView::fitWidth);
+    m_fitButtons.append(fitWidth);
 
     QToolButton *layoutButton = addButton(QStringLiteral("continuous"), tr("Page layout"), false);
     connect(layoutButton, &QToolButton::clicked, session, [session] {
@@ -135,6 +139,7 @@ ViewerToolbar::ViewerToolbar(PageView *view)
                     break;
                 }
             });
+    m_fitButtons.append(layoutButton);
 
     connect(session, &core::DocumentSession::zoomChanged, this, &ViewerToolbar::syncZoomBox);
     syncZoomBox(session->zoom());
@@ -174,10 +179,31 @@ bool ViewerToolbar::eventFilter(QObject *watched, QEvent *event)
     return QWidget::eventFilter(watched, event);
 }
 
+void ViewerToolbar::setCompact(bool compact)
+{
+    if (compact == m_compact)
+        return;
+    m_compact = compact;
+    if (m_fitDivider)
+        m_fitDivider->setVisible(!compact);
+    for (QToolButton *button : m_fitButtons)
+        button->setVisible(!compact);
+}
+
 void ViewerToolbar::reposition()
 {
-    const QSize hint = sizeHint();
     const QRect area = m_view->viewport()->rect();
+    const int budget = qMax(0, area.width() - sideMargin * 2);
+
+    // Show the full bar when it fits; otherwise drop fit/layout so the zoom
+    // controls stay on screen instead of hanging off the edge.
+    setCompact(false);
+    QSize hint = sizeHint();
+    if (hint.width() > budget) {
+        setCompact(true);
+        hint = sizeHint();
+    }
+
     move(area.center().x() - hint.width() / 2, area.bottom() - hint.height() - bottomMargin);
     resize(hint);
     raise();

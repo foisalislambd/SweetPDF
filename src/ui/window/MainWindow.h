@@ -94,8 +94,13 @@ protected:
     void closeEvent(QCloseEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 private:
+    /// Width-driven chrome density. Applied only when the mode itself changes,
+    /// so a manual Ctrl+B / Ctrl+J is not undone by the next pixel of resize.
+    enum class LayoutMode { Comfortable, Compact, Narrow };
+
     void createActions();
     /// Builds the application menu. It hangs off a button in the ribbon tab strip
     /// instead of a separate menu bar, so the window has one command row instead
@@ -108,6 +113,10 @@ private:
     void updateForCurrentDocument();
     void updateWindowTitleFromSession();
     void showWelcomeIfEmpty();
+
+    LayoutMode layoutModeForWidth(int width) const;
+    void applyLayoutMode(bool force = false);
+    void clampSplitterSizes();
 
     void closeTab(int index);
     PageView *currentView() const;
@@ -162,6 +171,9 @@ private:
 
     QHash<QString, QAction *> m_actions;
     QList<QAction *> m_documentActions; ///< Enabled only while a document is open.
+
+    LayoutMode m_layoutMode = LayoutMode::Comfortable;
+    bool m_layoutModeReady = false;
 };
 
 } // namespace sweet::ui
