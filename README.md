@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="resources/icons/hicolor/128x128.png" alt="SweetPDF" width="128" height="128">
+</p>
+
 # SweetPDF
 
 **An all-in-one, open source PDF editor for Linux, Windows and macOS.**
@@ -11,7 +15,11 @@ computer: no account, no upload, no subscription.
 > all work. Editing existing text is done by replacing it (the old glyphs are
 > redacted away and retyped) rather than by re-flowing the original text.
 
-The SweetPDF home screen
+<p align="center">
+  <img src="docs/screenshots/home.png" alt="SweetPDF home screen" width="820">
+</p>
+
+<p align="center"><em>Home screen — open a PDF, pick a task, or continue from Recent.</em></p>
 
 ## Contents
 
@@ -68,7 +76,17 @@ program is to open a copy of something and try the tools.
 
 ## The window
 
-The document view
+<p align="center">
+  <img src="docs/screenshots/viewer-light.png" alt="SweetPDF document view (light)" width="820">
+</p>
+
+<p align="center"><em>Document view — ribbon, page thumbnails, canvas, and tool options.</em></p>
+
+<p align="center">
+  <img src="docs/screenshots/viewer-dark.png" alt="SweetPDF document view (dark)" width="820">
+</p>
+
+<p align="center"><em>The same window in dark theme.</em></p>
 
 
 | Part                                   | What it is for                                                                                                                                                                     |
