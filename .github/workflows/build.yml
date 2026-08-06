@@ -1,0 +1,138 @@
+# Builds, tests and (optionally) packages SweetPDF on every supported OS.
+#
+# This is a reusable workflow: `ci.yml` calls it to check pushes and pull
+# requests, `release.yml` calls it with the version of the release it is about to
+# publish. Everything lives in one matrix job on purpose - `fail-fast: true` then
+# cancels the still-running platforms the moment one of them fails, so a broken
+# build never burns minutes and never reaches the release job.
+
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Version stamped into the binaries and the package names.
+        required: true
+        type: string
+      package:
+        description: Produce installable packages and upload them as artifacts.
+        required: false
+        default: false
+        type: boolean
+      warnings_as_errors:
+        description: Fail the build on compiler warnings.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Ubuntu 26.04 is the oldest image whose MuPDF (1.27) has the APIs the
+          # editor uses, so the .deb targets 26.04 and newer.
+          - name: linux-x86_64
+            runner: ubuntu-26.04
+            arch: x86_64
+            shell: bash
+          - name: windows-x86_64
+            runner: windows-2025
+            arch: x86_64
+            shell: msys2 {0}
+          # macOS is left out deliberately: it needs macos-* runners. To ship
+          # .dmg builds later, add:
+          #   - { name: macos-arm64, runner: macos-15, arch: arm64, shell: bash }
+
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+
+    steps:
+      - name: Check out the sources
+        uses: actions/checkout@v4
+
+      - name: Install the Linux toolchain and libraries
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential cmake ninja-build pkg-config file \
+            qt6-base-dev qt6-base-dev-tools qt6-svg-dev qt6-qpa-plugins \
+            libmupdf-dev libfreetype-dev libharfbuzz-dev libjpeg-dev \
+            libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libmujs-dev \
+            zlib1g-dev libsqlite3-dev libtesseract-dev libleptonica-dev \
+            libgl1-mesa-dev libxkbcommon-dev ghostscript
+
+      - name: Install the MSYS2 toolchain and libraries
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          # zip builds the release archive; ghostscript renders the test
+          # document, without it the test suite has nothing to open.
+          install: >-
+            zip
+          pacboy: >-
+            toolchain:p cmake:p ninja:p pkgconf:p
+            qt6-base:p qt6-svg:p qt6-tools:p
+            libmupdf:p sqlite3:p tesseract-ocr:p ghostscript:p
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSWEETPDF_VERSION="${{ inputs.version }}" \
+            -DSWEETPDF_PACKAGE_ARCH="${{ matrix.arch }}" \
+            -DSWEETPDF_WARNINGS_AS_ERRORS=${{ inputs.warnings_as_errors && 'ON' || 'OFF' }}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package for Linux
+        if: inputs.package && runner.os == 'Linux'
+        shell: bash
+        run: cd build && cpack
+
+      # windeployqt brings Qt and its plugins, but not MuPDF, Tesseract or the
+      # compiler runtime, so those are walked out of the import tables by hand.
+      - name: Package for Windows
+        if: inputs.package && runner.os == 'Windows'
+        run: |
+          set -euo pipefail
+          stage="dist/SweetPDF"
+          cmake --install build --prefix "$stage"
+          # MSYS2 names the tool after the Qt major version; plain Windows Qt
+          # builds do not.
+          deploy="$(command -v windeployqt-qt6 || command -v windeployqt)"
+          "$deploy" --release --no-translations --no-system-d3d-compiler \
+            --no-opengl-sw "$stage/sweetpdf.exe"
+          ./scripts/copy-mingw-dlls.sh "$stage"
+          mkdir -p build
+          (cd dist && zip -r -q "../build/sweetpdf-${{ inputs.version }}-windows-${{ matrix.arch }}.zip" SweetPDF)
+
+      - name: Upload the packages
+        if: inputs.package
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweetpdf-${{ matrix.name }}
+          path: |
+            build/*.deb
+            build/*.tar.gz
+            build/*.zip
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,28 @@
+# Checks that do not publish anything.
+#
+# Pull requests and branch pushes get the same build and test matrix as a
+# release, only stricter: warnings are errors here, so problems surface in review
+# instead of blocking a release later. Pushes to main are handled by release.yml.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    uses: ./.github/workflows/build.yml
+    with:
+      version: 0.0.0
+      package: false
+      warnings_as_errors: true

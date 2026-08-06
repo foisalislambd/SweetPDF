@@ -143,6 +143,39 @@ cmake --build build
 | --- | --- | --- |
 | `SWEETPDF_ENABLE_OCR` | `ON` | Build Tesseract-backed OCR. Turns itself off if Tesseract is missing. |
 | `SWEETPDF_WARNINGS_AS_ERRORS` | `OFF` | Fail the build on any warning. Used in CI. |
+| `SWEETPDF_VERSION` | `0.0.0` | Version shown in the app and used in package names. Set by the release workflow. |
+
+## Releases and CI
+
+Two workflows drive everything under `.github/workflows`:
+
+- **CI** (`ci.yml`) runs on pull requests and on pushes to any branch except
+  `main`. It builds and tests every platform with warnings promoted to errors,
+  and publishes nothing.
+- **Release** (`release.yml`) runs on every push to `main` (documentation-only
+  commits are ignored) and can be started by hand from the Actions tab, with an
+  optional explicit version.
+
+A release run works out the version first, then builds and tests all platforms,
+and only creates the tag and the GitHub release when every platform succeeded.
+The builds share one matrix job with `fail-fast: true`, so the first failure
+cancels the remaining platforms; because the tag is created by the publish step,
+a failed run leaves no tag and no release behind.
+
+Versions come from `scripts/next-version.sh`: the first release is `1.0.0` and
+every component stops at nine, so `1.0.9` is followed by `1.1.0` and `1.9.9` by
+`2.0.0`. Run the script locally to see what the next release would be.
+
+Each release carries:
+
+| Platform | Artifacts |
+| --- | --- |
+| Linux x86_64 | `.deb` (Ubuntu 26.04 or newer) and a `.tar.gz` |
+| Windows x86_64 | portable `.zip` with Qt, MuPDF and Tesseract bundled |
+
+plus a `SHA256SUMS` file. macOS is not built: it needs the `macos-*` runners, so
+the matrix in `build.yml` has a commented entry to enable when you want `.dmg`
+builds.
 
 ## Keyboard shortcuts
 

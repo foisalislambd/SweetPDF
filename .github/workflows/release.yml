@@ -1,0 +1,105 @@
+# Publishes a release for every OS.
+#
+# Order of events: work out the next version, build and test all platforms, and
+# only if every single one of them succeeded create the tag and the GitHub
+# release. A failing platform cancels the others (`fail-fast` in build.yml) and
+# leaves no tag behind, so a failed run never produces a half-finished release.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'LICENSE'
+      - '.gitignore'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (default: the next one after the latest tag)'
+        required: false
+        type: string
+
+# A newer push supersedes a release that is still building.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Work out the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pick.outputs.version }}
+      tag: ${{ steps.pick.outputs.tag }}
+    steps:
+      - name: Check out the sources
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pick the next version
+        id: pick
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="$(./scripts/next-version.sh "${REQUESTED#v}")"
+          tag="v$version"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "::error::$tag already exists - pass a different version or delete the tag"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Releasing $tag" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Build
+    needs: version
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      package: true
+
+  release:
+    name: Publish ${{ needs.version.outputs.tag }}
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the sources
+        uses: actions/checkout@v4
+
+      - name: Collect the packages
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+
+      - name: Checksum the packages
+        working-directory: packages
+        run: |
+          set -euo pipefail
+          sha256sum ./* > SHA256SUMS
+          cat SHA256SUMS
+
+      # gh creates the tag at --target itself, so the tag only ever appears for a
+      # run whose builds all passed.
+      - name: Create the tag and the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "SweetPDF $VERSION" \
+            --generate-notes \
+            packages/*

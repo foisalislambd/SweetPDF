@@ -1,7 +1,12 @@
 cmake_minimum_required(VERSION 3.21)
 
+# Release builds get their number from the tag CI is about to create, so the
+# binary, the package file names and the About box always agree. Local builds
+# fall back to 0.0.0 to make "this is not a release" obvious.
+set(SWEETPDF_VERSION "0.0.0" CACHE STRING "Version to stamp into the build")
+
 project(SweetPDF
-    VERSION 0.1.0
+    VERSION ${SWEETPDF_VERSION}
     DESCRIPTION "All-in-one open source PDF editor"
     HOMEPAGE_URL "https://github.com/sweetpdf/sweetpdf"
     LANGUAGES CXX
@@ -59,3 +64,5 @@ include(CTest)
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
+
+include(Packaging)
