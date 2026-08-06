@@ -376,7 +376,6 @@ QPushButton#RibbonTab:checked {
     color: {accent};
     background: transparent;
     border-bottom: 2px solid {accent};
-    font-weight: 600;
 }
 
 QToolButton {
