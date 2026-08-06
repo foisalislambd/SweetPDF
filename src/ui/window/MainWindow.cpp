@@ -675,13 +675,13 @@ void MainWindow::createRibbon()
     m_ribbon = new RibbonBar(this);
 
     RibbonPage *home = m_ribbon->addPage(tr("Home"));
+    // Open / Save / Print only: Save As, Save a Copy and Images sit in the Menu
+    // instead. Stacking them beside the large buttons forced the whole ribbon to
+    // grow taller than the commands that actually need to be one click away.
     RibbonGroup *fileGroup = home->addGroup(tr("File"));
     fileGroup->addAction(action(QStringLiteral("open")));
     fileGroup->addAction(action(QStringLiteral("save")));
     fileGroup->addAction(action(QStringLiteral("print")));
-    fileGroup->addCompactAction(action(QStringLiteral("saveAs")));
-    fileGroup->addCompactAction(action(QStringLiteral("saveCopy")));
-    fileGroup->addCompactAction(action(QStringLiteral("exportImages")));
 
     RibbonGroup *historyGroup = home->addGroup(tr("History"));
     historyGroup->addAction(action(QStringLiteral("undo")));

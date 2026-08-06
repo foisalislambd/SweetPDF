@@ -16,9 +16,9 @@
 namespace sweet::ui {
 namespace {
 
-constexpr int largeIconSize = 22;
-constexpr int compactIconSize = 16;
-constexpr int largeButtonWidth = 74;
+constexpr int largeIconSize = 18;
+constexpr int compactIconSize = 14;
+constexpr int largeButtonWidth = 62;
 
 QToolButton *makeButton(QAction *action, bool large)
 {
@@ -34,8 +34,8 @@ QToolButton *makeButton(QAction *action, bool large)
         // Wide enough for the label: a truncated command name is worse than a
         // ribbon that grows by a few pixels.
         const int textWidth = button->fontMetrics().horizontalAdvance(action->text());
-        button->setMinimumWidth(qMax(largeButtonWidth, textWidth + 28));
-        button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Expanding);
+        button->setMinimumWidth(qMax(largeButtonWidth, textWidth + 18));
+        button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
     } else {
         button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         button->setIconSize(QSize(compactIconSize, compactIconSize));
@@ -53,8 +53,8 @@ RibbonGroup::RibbonGroup(const QString &title, QWidget *parent)
     : QWidget(parent)
 {
     auto *column = new QVBoxLayout(this);
-    column->setContentsMargins(6, 4, 6, 2);
-    column->setSpacing(2);
+    column->setContentsMargins(4, 2, 4, 1);
+    column->setSpacing(1);
 
     auto *content = new QWidget(this);
     m_row = new QHBoxLayout(content);
@@ -118,7 +118,7 @@ RibbonPage::RibbonPage(QWidget *parent)
 {
     setObjectName(QStringLiteral("RibbonPage"));
     m_row = new QHBoxLayout(this);
-    m_row->setContentsMargins(8, 4, 8, 4);
+    m_row->setContentsMargins(6, 2, 6, 2);
     m_row->setSpacing(0);
 
     // The trailing stretch is created up front and everything is inserted before
@@ -168,8 +168,8 @@ RibbonBar::RibbonBar(QWidget *parent)
     auto *tabStrip = new QWidget(this);
     tabStrip->setObjectName(QStringLiteral("RibbonTabStrip"));
     auto *stripLayout = new QHBoxLayout(tabStrip);
-    stripLayout->setContentsMargins(8, 5, 8, 0);
-    stripLayout->setSpacing(6);
+    stripLayout->setContentsMargins(8, 3, 8, 0);
+    stripLayout->setSpacing(4);
     column->addWidget(tabStrip);
 
     // Three slots: the application menu on the left, the tabs, and the

@@ -348,8 +348,8 @@ QMenu::right-arrow { width: 12px; height: 12px; }
 #RibbonGroupSeparator { background: {border}; }
 
 QPushButton#RibbonTab {
-    background: transparent; border: none; border-radius: 8px;
-    padding: 6px 15px; color: {textMuted}; font-size: {fontSmall}pt; font-weight: 500;
+    background: transparent; border: none; border-radius: 7px;
+    padding: 4px 12px; color: {textMuted}; font-size: {fontSmall}pt; font-weight: 500;
 }
 QPushButton#RibbonTab:hover { background: {hover}; color: {text}; }
 QPushButton#RibbonTab:checked {
@@ -358,14 +358,14 @@ QPushButton#RibbonTab:checked {
 
 QToolButton {
     background: transparent; border: 1px solid transparent;
-    border-radius: 9px; padding: 4px; color: {text};
+    border-radius: 8px; padding: 3px; color: {text};
 }
 QToolButton:hover { background: {hover}; }
 QToolButton:pressed { background: {pressed}; }
 QToolButton:checked { background: {accentSoft}; border-color: {accent}; color: {accent}; }
 QToolButton:disabled { color: {textMuted}; }
 QToolButton::menu-indicator { image: none; }
-QToolButton#RibbonAction { padding: 6px 6px 5px 6px; font-size: {fontSmall}pt; }
+QToolButton#RibbonAction { padding: 3px 4px 2px 4px; font-size: {fontCaption}pt; }
 QToolButton#RailButton {
     border-radius: 10px; font-size: {fontCaption}pt; color: {textMuted};
 }
