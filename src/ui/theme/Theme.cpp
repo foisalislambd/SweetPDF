@@ -18,20 +18,20 @@ namespace {
 Palette lightPalette()
 {
     Palette p;
-    p.window = QColor(0xFC, 0xFD, 0xFE);
+    p.window = QColor(0xF7, 0xF7, 0xF8);
     p.surface = QColor(0xFF, 0xFF, 0xFF);
-    p.surfaceAlt = QColor(0xF4, 0xF6, 0xFA);
-    p.canvas = QColor(0xE8, 0xEB, 0xF1);
-    p.border = QColor(0xE4, 0xE8, 0xEF);
-    p.borderStrong = QColor(0xC6, 0xCE, 0xDA);
-    p.text = QColor(0x18, 0x1F, 0x2B);
-    p.textMuted = QColor(0x6A, 0x74, 0x86);
+    p.surfaceAlt = QColor(0xEE, 0xEF, 0xF1);
+    p.canvas = QColor(0xD9, 0xDB, 0xE0);
+    p.border = QColor(0xD0, 0xD2, 0xD7);
+    p.borderStrong = QColor(0xB0, 0xB4, 0xBC);
+    p.text = QColor(0x2C, 0x2C, 0x2C);
+    p.textMuted = QColor(0x6E, 0x6E, 0x6E);
     p.textInverted = QColor(0xFF, 0xFF, 0xFF);
-    p.accent = QColor(0x25, 0x63, 0xEB);
-    p.accentHover = QColor(0x1B, 0x4C, 0xD4);
-    p.accentSoft = QColor(0xE6, 0xEE, 0xFE);
-    p.hover = QColor(0xEE, 0xF1, 0xF7);
-    p.pressed = QColor(0xDE, 0xE4, 0xEE);
+    p.accent = QColor(0x26, 0x6C, 0xE0);
+    p.accentHover = QColor(0x1B, 0x57, 0xC4);
+    p.accentSoft = QColor(0xE8, 0xF0, 0xFC);
+    p.hover = QColor(0xE6, 0xE7, 0xEA);
+    p.pressed = QColor(0xD8, 0xDA, 0xDE);
     p.markupYellow = QColor(0xFF, 0xDD, 0x4A);
     p.markupGreen = QColor(0x4A, 0xD8, 0x91);
     p.markupPink = QColor(0xFF, 0x76, 0xA8);
@@ -42,20 +42,20 @@ Palette lightPalette()
 Palette darkPalette()
 {
     Palette p;
-    p.window = QColor(0x1C, 0x1F, 0x26);
-    p.surface = QColor(0x23, 0x27, 0x30);
-    p.surfaceAlt = QColor(0x2A, 0x2F, 0x3A);
-    p.canvas = QColor(0x12, 0x14, 0x18);
-    p.border = QColor(0x32, 0x37, 0x42);
-    p.borderStrong = QColor(0x48, 0x4F, 0x5C);
-    p.text = QColor(0xE7, 0xEA, 0xF0);
-    p.textMuted = QColor(0x96, 0x9F, 0xAF);
+    p.window = QColor(0x1E, 0x1E, 0x1E);
+    p.surface = QColor(0x2A, 0x2A, 0x2A);
+    p.surfaceAlt = QColor(0x26, 0x26, 0x26);
+    p.canvas = QColor(0x12, 0x12, 0x12);
+    p.border = QColor(0x3A, 0x3A, 0x3A);
+    p.borderStrong = QColor(0x52, 0x52, 0x52);
+    p.text = QColor(0xE8, 0xE8, 0xE8);
+    p.textMuted = QColor(0xA0, 0xA0, 0xA0);
     p.textInverted = QColor(0xFF, 0xFF, 0xFF);
-    p.accent = QColor(0x5A, 0x96, 0xFF);
+    p.accent = QColor(0x5B, 0x9A, 0xF5);
     p.accentHover = QColor(0x7A, 0xAD, 0xFF);
-    p.accentSoft = QColor(0x22, 0x31, 0x4C);
-    p.hover = QColor(0x2E, 0x34, 0x40);
-    p.pressed = QColor(0x39, 0x40, 0x4E);
+    p.accentSoft = QColor(0x2A, 0x38, 0x4F);
+    p.hover = QColor(0x33, 0x33, 0x33);
+    p.pressed = QColor(0x3D, 0x3D, 0x3D);
     p.markupYellow = QColor(0xF2, 0xCB, 0x3E);
     p.markupGreen = QColor(0x3E, 0xC2, 0x80);
     p.markupPink = QColor(0xF2, 0x6A, 0x9A);
@@ -341,42 +341,78 @@ QMenu::right-arrow { width: 12px; height: 12px; }
 #DocumentTitle { color: {text}; font-size: {fontBody}pt; font-weight: 600; }
 #DocumentSubtitle { color: {textMuted}; font-size: {fontCaption}pt; }
 
-#RibbonBar { background: {window}; border-bottom: 1px solid {border}; }
-#RibbonTabStrip { background: transparent; }
-#RibbonPage { background: {window}; }
-#RibbonGroupSeparator { background: {border}; }
+#RibbonBar { background: {window}; border-bottom: 1px solid {borderStrong}; }
+#RibbonTabStrip {
+    background: {window};
+    border-bottom: 1px solid {border};
+}
+#RibbonPages, #RibbonPage, #RibbonPageScroll, #RibbonPageContent {
+    background: {surfaceAlt};
+}
+#RibbonGroupSeparator { background: {borderStrong}; }
 
 QPushButton#RibbonTab {
-    background: transparent; border: none; border-radius: 6px;
-    padding: 2px 9px; color: {textMuted}; font-size: {fontCaption}pt; font-weight: 500;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 8px 14px 7px 14px;
+    color: {textMuted};
+    font-size: {fontSmall}pt;
+    font-weight: 500;
 }
-QPushButton#RibbonTab:hover { background: {hover}; color: {text}; }
+QPushButton#RibbonTab:hover {
+    background: transparent;
+    color: {text};
+}
 QPushButton#RibbonTab:checked {
-    color: {accent}; background: {accentSoft}; font-weight: 600;
+    color: {accent};
+    background: transparent;
+    border-bottom: 2px solid {accent};
+    font-weight: 600;
 }
 
 QToolButton {
     background: transparent; border: 1px solid transparent;
-    border-radius: 6px; padding: 2px; color: {text};
+    border-radius: 4px; padding: 2px; color: {text};
 }
 QToolButton:hover { background: {hover}; }
 QToolButton:pressed { background: {pressed}; }
 QToolButton:checked { background: {accentSoft}; border-color: {accent}; color: {accent}; }
 QToolButton:disabled { color: {textMuted}; }
 QToolButton::menu-indicator { image: none; }
-QToolButton#RibbonAction { padding: 1px 3px 1px 3px; font-size: {fontCaption}pt; }
-QToolButton#RailButton {
-    border-radius: 10px; font-size: {fontCaption}pt; color: {textMuted};
+QToolButton#RibbonAction {
+    padding: 4px 6px 3px 6px;
+    color: {textMuted};
+    font-size: {fontCaption}pt;
+    border-radius: 4px;
 }
-QToolButton#RailButton:hover { color: {text}; }
-QToolButton#RailButton:checked { color: {accent}; }
-QToolButton#AppMenu { padding: 3px 7px; font-weight: 600; }
+QToolButton#RibbonAction:hover { color: {text}; background: {hover}; }
+QToolButton#RibbonAction:checked {
+    color: {accent}; background: {accentSoft}; border-color: transparent;
+}
+QToolButton#RailButton {
+    border: none;
+    border-radius: 6px;
+    padding: 8px;
+    color: {textMuted};
+}
+QToolButton#RailButton:hover { color: {text}; background: {hover}; }
+QToolButton#RailButton:checked {
+    color: {accent}; background: {accentSoft};
+}
+QToolButton#AppMenu {
+    padding: 6px 10px;
+    font-weight: 600;
+    color: {text};
+    border-radius: 4px;
+}
 
 /* --- Panels ------------------------------------------------------------- */
 #PanelHeader { background: {window}; border-bottom: 1px solid {border}; }
 #PanelTitle { font-size: {fontBody}pt; font-weight: 600; }
 #SidebarRail { background: {window}; border-right: 1px solid {border}; }
-#Sidebar { background: {window}; border-right: 1px solid {border}; }
+#Sidebar { background: {surface}; border-right: 1px solid {border}; }
 #Inspector { background: {window}; border-left: 1px solid {border}; }
 #PropertiesPanel { background: {window}; }
 #SectionLabel { color: {textMuted}; font-size: {fontCaption}pt; font-weight: 600; }

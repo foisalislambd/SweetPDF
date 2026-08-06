@@ -16,7 +16,7 @@
 namespace sweet::ui {
 namespace {
 
-constexpr int railWidth = 68;
+constexpr int railWidth = 50;
 
 QWidget *makePlaceholder(const QString &iconName, const QString &title, const QString &hint,
                          QWidget *parent)
@@ -64,8 +64,8 @@ Sidebar::Sidebar(QWidget *parent)
     rail->setObjectName(QStringLiteral("SidebarRail"));
     rail->setFixedWidth(railWidth);
     m_railLayout = new QVBoxLayout(rail);
-    m_railLayout->setContentsMargins(6, 8, 6, 8);
-    m_railLayout->setSpacing(4);
+    m_railLayout->setContentsMargins(4, 10, 4, 10);
+    m_railLayout->setSpacing(2);
     m_railLayout->addStretch(1);
     row->addWidget(rail);
 
@@ -150,13 +150,15 @@ Sidebar::Sidebar(QWidget *parent)
 void Sidebar::addRailButton(Panel panel, const QString &iconName, const QString &label)
 {
     auto *button = new QToolButton(this);
+    button->setObjectName(QStringLiteral("RailButton"));
     button->setCheckable(true);
-    button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    // Acrobat-style nav: icon only; the panel header and tooltip carry the name.
+    button->setToolButtonStyle(Qt::ToolButtonIconOnly);
     button->setIcon(icon(iconName));
-    button->setText(label);
-    button->setIconSize(QSize(20, 20));
-    button->setFixedSize(railWidth - 12, 52);
+    button->setIconSize(QSize(24, 24));
+    button->setFixedSize(railWidth - 8, 40);
     button->setToolTip(label);
+    button->setAccessibleName(label);
     button->setFocusPolicy(Qt::TabFocus);
 
     connect(&Theme::instance(), &Theme::changed, button,

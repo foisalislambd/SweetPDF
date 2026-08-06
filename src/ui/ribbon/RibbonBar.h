@@ -23,11 +23,10 @@ class RibbonGroup : public QWidget
 public:
     explicit RibbonGroup(const QString &title, QWidget *parent = nullptr);
 
-    /// Large button: icon above the label. Use for primary commands.
+    /// Primary command: icon above a short caption (Adobe-style tool cell).
     QToolButton *addAction(QAction *action);
 
-    /// Compact button: icon beside the label. Packed in a short column beside
-    /// large buttons.
+    /// Secondary command: icon beside the label, packed in a short column.
     QToolButton *addCompactAction(QAction *action);
 
     /// Starts a new column of compact buttons.

@@ -18,9 +18,9 @@
 namespace sweet::ui {
 namespace {
 
-constexpr int largeIconSize = 16;
-constexpr int compactIconSize = 13;
-constexpr int largeButtonWidth = 48;
+constexpr int largeIconSize = 20;
+constexpr int compactIconSize = 16;
+constexpr int largeCellWidth = 54;
 
 QToolButton *makeButton(QAction *action, bool large)
 {
@@ -29,16 +29,20 @@ QToolButton *makeButton(QAction *action, bool large)
     button->setDefaultAction(action);
     button->setFocusPolicy(Qt::TabFocus);
     button->setCursor(Qt::ArrowCursor);
+    button->setAutoRaise(true);
+    if (action->toolTip().isEmpty())
+        button->setToolTip(action->text());
 
     if (large) {
+        // Acrobat-style tool cell: glyph above a short caption, fixed footprint.
         button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
         button->setIconSize(QSize(largeIconSize, largeIconSize));
-        // Wide enough for the label: a truncated command name is worse than a
-        // ribbon that grows by a few pixels.
         const int textWidth = button->fontMetrics().horizontalAdvance(action->text());
-        button->setMinimumWidth(qMax(largeButtonWidth, textWidth + 12));
-        button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
+        button->setMinimumWidth(qMax(largeCellWidth, textWidth + 10));
+        button->setMinimumHeight(56);
+        button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     } else {
+        // Secondary commands pack beside a large cell without stretching the ribbon.
         button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         button->setIconSize(QSize(compactIconSize, compactIconSize));
         button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
@@ -49,26 +53,38 @@ QToolButton *makeButton(QAction *action, bool large)
     return button;
 }
 
+QFrame *makeGroupSeparator(QWidget *parent)
+{
+    auto *line = new QFrame(parent);
+    line->setObjectName(QStringLiteral("RibbonGroupSeparator"));
+    line->setFrameShape(QFrame::NoFrame);
+    line->setFixedWidth(1);
+    line->setMinimumHeight(48);
+    line->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    return line;
+}
+
 } // namespace
 
 RibbonGroup::RibbonGroup(const QString &title, QWidget *parent)
     : QWidget(parent)
 {
-    // Title stays for accessibility / translators, but is not drawn — a slim
-    // ribbon reads better without "File", "History", … captions under clusters.
+    // Title stays for accessibility / translators, but is not drawn — Adobe
+    // clusters tools with separators, not "File" / "History" captions.
     if (!title.isEmpty())
         setAccessibleName(title);
 
     m_row = new QHBoxLayout(this);
-    m_row->setContentsMargins(2, 1, 2, 1);
-    m_row->setSpacing(1);
+    m_row->setContentsMargins(4, 4, 4, 4);
+    m_row->setSpacing(2);
+    m_row->setAlignment(Qt::AlignVCenter);
 }
 
 QToolButton *RibbonGroup::addAction(QAction *action)
 {
     m_compactColumn = nullptr;
     QToolButton *button = makeButton(action, true);
-    m_row->addWidget(button);
+    m_row->addWidget(button, 0, Qt::AlignVCenter);
     return button;
 }
 
@@ -76,7 +92,7 @@ void RibbonGroup::addCompactColumn()
 {
     m_compactColumn = new QVBoxLayout;
     m_compactColumn->setContentsMargins(0, 0, 0, 0);
-    m_compactColumn->setSpacing(1);
+    m_compactColumn->setSpacing(2);
     m_compactColumn->addStretch(1);
     m_row->addLayout(m_compactColumn);
 }
@@ -94,19 +110,15 @@ QToolButton *RibbonGroup::addCompactAction(QAction *action)
 void RibbonGroup::addSeparator()
 {
     m_compactColumn = nullptr;
-    auto *line = new QFrame(this);
-    line->setObjectName(QStringLiteral("RibbonGroupSeparator"));
-    line->setFrameShape(QFrame::NoFrame);
-    line->setFixedWidth(1);
-    m_row->addSpacing(3);
-    m_row->addWidget(line);
-    m_row->addSpacing(3);
+    m_row->addSpacing(4);
+    m_row->addWidget(makeGroupSeparator(this));
+    m_row->addSpacing(4);
 }
 
 void RibbonGroup::addWidget(QWidget *widget)
 {
     m_compactColumn = nullptr;
-    m_row->addWidget(widget);
+    m_row->addWidget(widget, 0, Qt::AlignVCenter);
 }
 
 RibbonPage::RibbonPage(QWidget *parent)
@@ -130,10 +142,12 @@ RibbonPage::RibbonPage(QWidget *parent)
     outer->addWidget(scroll);
 
     auto *content = new QWidget(scroll);
+    content->setObjectName(QStringLiteral("RibbonPageContent"));
     content->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
     m_row = new QHBoxLayout(content);
-    m_row->setContentsMargins(4, 1, 4, 1);
+    m_row->setContentsMargins(8, 2, 8, 2);
     m_row->setSpacing(0);
+    m_row->setAlignment(Qt::AlignVCenter);
 
     // The trailing stretch is created up front and everything is inserted before
     // it, so groups always start at the left edge however many there are.
@@ -159,16 +173,12 @@ int RibbonPage::groupCount() const
 
 QWidget *RibbonPage::makeSeparator()
 {
-    auto *line = new QFrame(this);
-    line->setObjectName(QStringLiteral("RibbonGroupSeparator"));
-    line->setFrameShape(QFrame::NoFrame);
-    line->setFixedWidth(1);
-    return line;
+    return makeGroupSeparator(this);
 }
 
 void RibbonPage::insertBeforeStretch(QWidget *widget)
 {
-    m_row->insertWidget(m_row->count() - 1, widget);
+    m_row->insertWidget(m_row->count() - 1, widget, 0, Qt::AlignVCenter);
 }
 
 RibbonBar::RibbonBar(QWidget *parent)
@@ -183,7 +193,7 @@ RibbonBar::RibbonBar(QWidget *parent)
     auto *tabStrip = new QWidget(this);
     tabStrip->setObjectName(QStringLiteral("RibbonTabStrip"));
     auto *stripLayout = new QHBoxLayout(tabStrip);
-    stripLayout->setContentsMargins(6, 2, 6, 0);
+    stripLayout->setContentsMargins(10, 0, 10, 0);
     stripLayout->setSpacing(2);
     column->addWidget(tabStrip);
 
@@ -204,6 +214,7 @@ RibbonBar::RibbonBar(QWidget *parent)
     m_trailingLayout = addSlot(0);
 
     m_pages = new QStackedWidget(this);
+    m_pages->setObjectName(QStringLiteral("RibbonPages"));
     column->addWidget(m_pages);
 
     m_tabs = new QButtonGroup(this);
@@ -238,6 +249,7 @@ RibbonPage *RibbonBar::addPage(const QString &title)
     tab->setCheckable(true);
     tab->setCursor(Qt::ArrowCursor);
     tab->setFocusPolicy(Qt::TabFocus);
+    tab->setFlat(true);
     tab->installEventFilter(this);
     m_tabs->addButton(tab, index);
     m_tabsLayout->addWidget(tab);
