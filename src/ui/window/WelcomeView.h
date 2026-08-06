@@ -3,7 +3,6 @@
 #include <QStringList>
 #include <QWidget>
 
-class QBoxLayout;
 class QGridLayout;
 class QLabel;
 class QLineEdit;
@@ -16,9 +15,8 @@ namespace sweet::ui {
 ///
 /// Modelled on what desktop PDF suites put on their start page, because that is
 /// what someone arriving here expects: pick a task, or pick up a file you had
-/// open before. It is four blocks - a header with the primary action, a grid of
-/// task tiles, the recent-files list (which doubles as the drop target), and a
-/// short guide so a first-time user is never left guessing.
+/// open before. Three blocks - a header with the primary action, a grid of task
+/// tiles, and the recent-files list (which doubles as the drop target).
 ///
 /// MainWindow hides the ribbon and the side panels while this is showing: none of
 /// that chrome does anything without a document, and hiding it leaves the home
@@ -57,7 +55,6 @@ private:
     void buildHeader(QVBoxLayout *column);
     void buildTiles(QVBoxLayout *column);
     QWidget *buildRecentSection();
-    QWidget *buildGuideSection();
     void rebuildRecentRows();
     void relayout();
     void placeTiles(int columns);
@@ -67,8 +64,6 @@ private:
     void retint();
 
     QWidget *m_column = nullptr;
-    QBoxLayout *m_lower = nullptr;
-    QWidget *m_guide = nullptr;
     QGridLayout *m_tileGrid = nullptr;
     QLineEdit *m_filter = nullptr;
     QWidget *m_recentRows = nullptr;

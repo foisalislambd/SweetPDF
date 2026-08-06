@@ -3,7 +3,6 @@
 #include "ui/theme/Theme.h"
 
 #include <QApplication>
-#include <QBoxLayout>
 #include <QClipboard>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -29,7 +28,6 @@ namespace sweet::ui {
 namespace {
 
 constexpr int contentWidthCap = 1080;
-constexpr int guideWidth = 320;
 constexpr int recentLimit = 12;
 constexpr int defaultTileColumns = 4;
 
@@ -114,31 +112,6 @@ const Task tasks[] = {
       QT_TRANSLATE_NOOP("WelcomeView", "Make a scan searchable") },
     { "encrypt", "lock", QT_TRANSLATE_NOOP("WelcomeView", "Protect"),
       QT_TRANSLATE_NOOP("WelcomeView", "Passwords and permissions") },
-};
-
-/// First steps, one line each so the card stays scannable.
-const char *const steps[] = {
-    QT_TRANSLATE_NOOP("WelcomeView", "Open a PDF, or drop one anywhere on this window."),
-    QT_TRANSLATE_NOOP("WelcomeView", "Use the ribbon tabs for markup, pages, editing and tools."),
-    QT_TRANSLATE_NOOP("WelcomeView",
-                      "The left panel holds thumbnails, bookmarks, comments and forms."),
-    QT_TRANSLATE_NOOP("WelcomeView", "Everything is undoable until you save, so experiment."),
-    QT_TRANSLATE_NOOP("WelcomeView", "Saving writes real PDF objects that any viewer can read."),
-};
-
-struct Shortcut
-{
-    const char *what;
-    const char *keys;
-};
-
-const Shortcut shortcuts[] = {
-    { QT_TRANSLATE_NOOP("WelcomeView", "Open"), "Ctrl+O" },
-    { QT_TRANSLATE_NOOP("WelcomeView", "Save"), "Ctrl+S" },
-    { QT_TRANSLATE_NOOP("WelcomeView", "Find"), "Ctrl+F" },
-    { QT_TRANSLATE_NOOP("WelcomeView", "Undo"), "Ctrl+Z" },
-    { QT_TRANSLATE_NOOP("WelcomeView", "Fit page"), "Ctrl+1" },
-    { QT_TRANSLATE_NOOP("WelcomeView", "Navigation panel"), "Ctrl+B" },
 };
 
 QLabel *makeLabel(const QString &text, TextRole role, Ink ink, QWidget *parent)
@@ -236,13 +209,7 @@ WelcomeView::WelcomeView(QWidget *parent)
 
     buildHeader(layout);
     buildTiles(layout);
-
-    m_lower = new QBoxLayout(QBoxLayout::LeftToRight);
-    m_lower->setSpacing(24);
-    m_lower->addWidget(buildRecentSection(), 1);
-    m_guide = buildGuideSection();
-    m_lower->addWidget(m_guide, 0, Qt::AlignTop);
-    layout->addLayout(m_lower, 1);
+    layout->addWidget(buildRecentSection(), 1);
     layout->addStretch(1);
 
     connect(&Theme::instance(), &Theme::changed, this, &WelcomeView::retint);
@@ -257,7 +224,7 @@ void WelcomeView::resizeEvent(QResizeEvent *event)
 
 void WelcomeView::relayout()
 {
-    if (!m_column || !m_lower || !m_guide || !m_tileGrid)
+    if (!m_column || !m_tileGrid)
         return;
 
     constexpr int sideMargins = 80;
@@ -270,15 +237,6 @@ void WelcomeView::relayout()
     else if (available < 1000)
         columns = 2;
     placeTiles(columns);
-
-    if (available < 1000) {
-        m_lower->setDirection(QBoxLayout::TopToBottom);
-        m_guide->setMinimumWidth(0);
-        m_guide->setMaximumWidth(QWIDGETSIZE_MAX);
-    } else {
-        m_lower->setDirection(QBoxLayout::LeftToRight);
-        m_guide->setFixedWidth(guideWidth);
-    }
 }
 
 void WelcomeView::placeTiles(int columns)
@@ -472,78 +430,6 @@ QWidget *WelcomeView::buildRecentSection()
     layout->addStretch(1);
 
     rebuildRecentRows();
-    return section;
-}
-
-QWidget *WelcomeView::buildGuideSection()
-{
-    auto *section = new QWidget(this);
-    section->setFixedWidth(guideWidth);
-    auto *layout = new QVBoxLayout(section);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(12);
-    layout->addWidget(makeSectionLabel(tr("Getting started"), section));
-
-    auto *stepsCard = new QWidget(section);
-    stepsCard->setObjectName(QStringLiteral("WelcomePanel"));
-    stepsCard->setAttribute(Qt::WA_StyledBackground, true);
-    auto *stepLayout = new QVBoxLayout(stepsCard);
-    stepLayout->setContentsMargins(18, 16, 18, 16);
-    stepLayout->setSpacing(11);
-
-    int number = 1;
-    for (const char *step : steps) {
-        auto *row = new QHBoxLayout;
-        row->setSpacing(10);
-
-        auto *badge = makeLabel(QString::number(number++), TextRole::Caption, Ink::Inverted,
-                                stepsCard);
-        badge->setObjectName(QStringLiteral("StepBadge"));
-        badge->setAlignment(Qt::AlignCenter);
-        badge->setFixedSize(20, 20);
-        row->addWidget(badge, 0, Qt::AlignTop);
-
-        auto *text = makeLabel(tr(step), TextRole::Small, Ink::Text, stepsCard);
-        text->setWordWrap(true);
-        row->addWidget(text, 1);
-        stepLayout->addLayout(row);
-    }
-    layout->addWidget(stepsCard);
-
-    auto *keys = new QWidget(section);
-    keys->setObjectName(QStringLiteral("WelcomePanel"));
-    keys->setAttribute(Qt::WA_StyledBackground, true);
-    auto *keyLayout = new QVBoxLayout(keys);
-    keyLayout->setContentsMargins(18, 16, 18, 16);
-    keyLayout->setSpacing(10);
-
-    auto *keyHeader = new QHBoxLayout;
-    keyHeader->setSpacing(8);
-    keyHeader->addWidget(makeGlyph(QStringLiteral("keyboard"), Ink::Muted, 16, keys));
-    keyHeader->addWidget(makeLabel(tr("Handy shortcuts"), TextRole::Body, Ink::Text, keys), 1);
-    keyLayout->addLayout(keyHeader);
-
-    for (const Shortcut &shortcut : shortcuts) {
-        auto *row = new QHBoxLayout;
-        row->addWidget(makeLabel(tr(shortcut.what), TextRole::Small, Ink::Muted, keys), 1);
-
-        auto *chip = makeLabel(QString::fromLatin1(shortcut.keys), TextRole::Caption, Ink::Text,
-                               keys);
-        chip->setObjectName(QStringLiteral("KeyChip"));
-        row->addWidget(chip, 0, Qt::AlignRight);
-        keyLayout->addLayout(row);
-    }
-
-    auto *guide = new QPushButton(icon(QStringLiteral("info")), tr("Read the full guide"), keys);
-    guide->setProperty("flat", true);
-    connect(guide, &QPushButton::clicked, this, [] {
-        QDesktopServices::openUrl(
-            QUrl(QStringLiteral("https://github.com/sweetpdf/sweetpdf#readme")));
-    });
-    keyLayout->addWidget(guide);
-
-    layout->addWidget(keys);
-    layout->addStretch(1);
     return section;
 }
 

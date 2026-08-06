@@ -91,7 +91,7 @@ program is to open a copy of something and try the tools.
 
 | Part                                   | What it is for                                                                                                                                                                     |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Home screen**                        | Shown when no document is open: task tiles, recent files, and this guide in short form. The ribbon and panels are hidden here because they cannot do anything yet.                 |
+| **Home screen**                        | Shown when no document is open: task tiles and recent files. The ribbon and panels are hidden here because they cannot do anything yet.                 |
 | **Ribbon**                             | Commands grouped by job: *Home*, *Edit*, *Comment*, *Page*, *View*, *Protect*, *Tools*. The *Menu* button on the left holds the file commands, recent files, preferences and help. |
 | **Navigation panel** (left, `Ctrl+B`)  | Six panels: *Pages* (thumbnails), *Marks* (bookmarks), *Notes* (comments), *Forms*, *Files* (attachments) and *Layers*.                                                            |
 | **Page canvas**                        | The document. A small floating bar carries the select and pan tools, zoom, and the page layout modes.                                                                              |
