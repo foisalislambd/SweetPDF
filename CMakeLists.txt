@@ -54,3 +54,8 @@ if(SWEETPDF_ENABLE_OCR)
 endif()
 
 add_subdirectory(src)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

@@ -1,0 +1,43 @@
+%!PS-Adobe-3.0
+% Throwaway multi-page document used to smoke test rendering, thumbnails and
+% the bookmark panel. Regenerate with:
+%   gs -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -sOutputFile=sample.pdf sample.ps
+
+/Header /Helvetica-Bold findfont 34 scalefont def
+/Body /Helvetica findfont 15 scalefont def
+
+/DrawPage {
+  /n exch def
+  Header setfont
+  0.12 0.28 0.6 setrgbcolor
+  72 700 moveto
+  (SweetPDF test page ) show
+  n 4 string cvs show
+
+  Body setfont
+  0.15 0.15 0.18 setrgbcolor
+  72 650 moveto
+  (This page exists only to exercise the renderer, the thumbnail panel) show
+  72 628 moveto
+  (and page navigation. Every page carries a different number so that) show
+  72 606 moveto
+  (scrolling and the page indicator can be verified at a glance.) show
+
+  0.85 0.88 0.93 setrgbcolor
+  72 120 468 380 rectfill
+
+  0.12 0.28 0.6 setrgbcolor
+  Header setfont
+  250 290 moveto
+  n 4 string cvs show
+  showpage
+} def
+
+[/Title (SweetPDF sample document) /Author (SweetPDF) /DOCINFO pdfmark
+
+[/Count 3 /Page 1 /Title (Sections) /OUT pdfmark
+[/Page 1 /Title (Introduction) /OUT pdfmark
+[/Page 3 /Title (Rendering) /OUT pdfmark
+[/Page 5 /Title (Navigation) /OUT pdfmark
+
+1 1 8 { DrawPage } for

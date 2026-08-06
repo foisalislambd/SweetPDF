@@ -1,15 +1,25 @@
+# The document model and rendering pipeline. Depends on Qt Core and Qt Gui only:
+# no widget may ever be included from here. See README.md in this directory.
+
 qt_add_library(sweetpdf_core STATIC
-    Geometry.h
-    MuContext.h            MuContext.cpp
-    PdfDocument.h          PdfDocument.cpp
-    PdfPage.h              PdfPage.cpp
-    RenderRequest.h
-    RenderQueue.h          RenderQueue.cpp
-    PageCache.h            PageCache.cpp
-    DocumentOutline.h
-    UndoCommand.h
-    DocumentSession.h      DocumentSession.cpp
-    Logging.h              Logging.cpp
+    # pdf/ - the MuPDF boundary. Nothing outside this folder touches fz_* types.
+    pdf/Geometry.h
+    pdf/DocumentOutline.h
+    pdf/MuContext.h            pdf/MuContext.cpp
+    pdf/PdfDocument.h          pdf/PdfDocument.cpp
+    pdf/PdfPage.h              pdf/PdfPage.cpp
+
+    # render/ - turning pages into bitmaps off the GUI thread.
+    render/RenderKey.h
+    render/PageCache.h         render/PageCache.cpp
+    render/RenderQueue.h       render/RenderQueue.cpp
+
+    # session/ - per-document state and the undo history.
+    session/DocumentSession.h  session/DocumentSession.cpp
+    session/DocumentCommand.h
+
+    # util/ - cross-cutting helpers.
+    util/Logging.h             util/Logging.cpp
 )
 
 target_include_directories(sweetpdf_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")

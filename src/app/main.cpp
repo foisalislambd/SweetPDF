@@ -1,6 +1,5 @@
-#include "core/Logging.h"
-#include "ui/MainWindow.h"
-#include "ui/Theme.h"
+#include "ui/theme/Theme.h"
+#include "ui/window/MainWindow.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
