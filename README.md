@@ -377,7 +377,14 @@ A release run works out the version first, then builds and tests all platforms,
 and only creates the tag and the GitHub release when every platform succeeded.
 The builds share one matrix job with `fail-fast: true`, so the first failure
 cancels the remaining platforms; because the tag is created by the publish step,
-a failed run leaves no tag and no release behind.
+a failed run leaves no tag and no release behind. Release runs queue instead of
+cancelling each other, so a run that is already publishing is never interrupted.
+
+To land something on `main` without cutting a release, put `[skip release]` in
+the commit message. `[skip-release]`, `[no release]` and `[release skip]` work
+too, in any capitalisation, anywhere in the message. The build and the tests
+still run — only the tag and the release are skipped, so `main` stays verified.
+A manual run from the Actions tab always releases, marker or not.
 
 Versions come from `scripts/next-version.sh`: the first release is `1.0.0` and
 every component stops at nine, so `1.0.9` is followed by `1.1.0` and `1.9.9` by

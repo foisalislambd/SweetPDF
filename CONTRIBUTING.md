@@ -118,7 +118,10 @@ MuPDF quirk is welcome and often requested.
 
 Pushing to `main` publishes a release, so pull requests are the normal route
 even for maintainers. Version numbers are worked out automatically — never edit
-a version by hand. See [Releases and CI](README.md#releases-and-ci).
+a version by hand. When a change belongs on `main` but does not deserve a release
+of its own, put `[skip release]` in the commit message: the build and the tests
+still run, only the tag and the release are skipped. See [Releases and
+CI](README.md#releases-and-ci).
 
 ## Questions
 
