@@ -87,7 +87,7 @@ jobs:
       tag: ${{ steps.pick.outputs.tag }}
     steps:
       - name: Check out the sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # The whole history: next-version.sh reads the existing tags.
           fetch-depth: 0
