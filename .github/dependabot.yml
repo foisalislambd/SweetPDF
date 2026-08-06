@@ -1,0 +1,12 @@
+# The C++ dependencies come from the system package manager, so the only thing
+# Dependabot can usefully watch here is the actions the workflows pin.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+    labels:
+      - ci

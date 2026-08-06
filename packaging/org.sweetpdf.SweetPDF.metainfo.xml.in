@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metadata. This is what Linux software centres read to show the
+  application, so it has to stay in step with the desktop entry and the README.
+-->
+<component type="desktop-application">
+  <id>org.sweetpdf.SweetPDF</id>
+  <launchable type="desktop-id">org.sweetpdf.SweetPDF.desktop</launchable>
+
+  <name>SweetPDF</name>
+  <summary>All-in-one PDF editor</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+
+  <description>
+    <p>
+      SweetPDF reads, annotates, edits and organises PDF documents. Everything
+      happens on your own computer: there is no account, no upload and no
+      subscription.
+    </p>
+    <p>What it can do:</p>
+    <ul>
+      <li>Read PDF, XPS, EPUB, CBZ and SVG with thumbnails, bookmarks and tabs</li>
+      <li>Select and search text across the whole document</li>
+      <li>Highlight, underline, strike out, draw, and add notes as real PDF annotations</li>
+      <li>Insert, delete, reorder, rotate, extract, merge and split pages</li>
+      <li>Fill in forms, and sign by drawing, typing or importing a signature</li>
+      <li>Encrypt with AES-256, redact content for good, and add watermarks</li>
+      <li>Turn scans into searchable PDFs with OCR, and export images, text or HTML</li>
+    </ul>
+    <p>
+      Every edit is undoable until you save, and saving writes real PDF objects
+      that any other viewer can read.
+    </p>
+  </description>
+
+  <categories>
+    <category>Office</category>
+    <category>Viewer</category>
+  </categories>
+
+  <keywords>
+    <keyword>PDF</keyword>
+    <keyword>annotate</keyword>
+    <keyword>OCR</keyword>
+    <keyword>merge</keyword>
+    <keyword>sign</keyword>
+  </keywords>
+
+  <url type="homepage">https://github.com/sweetpdf/sweetpdf</url>
+  <url type="bugtracker">https://github.com/sweetpdf/sweetpdf/issues</url>
+  <url type="help">https://github.com/sweetpdf/sweetpdf#how-do-i</url>
+  <url type="vcs-browser">https://github.com/sweetpdf/sweetpdf</url>
+
+  <developer id="org.sweetpdf">
+    <name>SweetPDF contributors</name>
+  </developer>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <recommends>
+    <display_length compare="ge">1024</display_length>
+  </recommends>
+
+  <content_rating type="oars-1.1"/>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>The home screen with tasks and recent documents</caption>
+      <image>https://raw.githubusercontent.com/sweetpdf/sweetpdf/main/docs/screenshots/home.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A document open with thumbnails and properties</caption>
+      <image>https://raw.githubusercontent.com/sweetpdf/sweetpdf/main/docs/screenshots/viewer-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The dark theme</caption>
+      <image>https://raw.githubusercontent.com/sweetpdf/sweetpdf/main/docs/screenshots/home-dark.png</image>
+    </screenshot>
+  </screenshots>
+
+  <provides>
+    <binary>sweetpdf</binary>
+  </provides>
+
+  <!-- Filled in from the version being built; see src/app/CMakeLists.txt. -->
+  <releases>
+    <release version="@PROJECT_VERSION@" date="@SWEETPDF_BUILD_DATE@">
+      <url type="details">https://github.com/sweetpdf/sweetpdf/releases/tag/v@PROJECT_VERSION@</url>
+    </release>
+  </releases>
+</component>

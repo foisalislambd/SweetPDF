@@ -1,0 +1,48 @@
+name: Feature request
+description: Suggest something SweetPDF should be able to do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check the [roadmap](https://github.com/sweetpdf/sweetpdf#roadmap)
+        first - real text editing, cryptographic signatures, Office conversion
+        and the attachments and layers panels are already planned. If your idea
+        is one of those, say so and tell us how you would use it; that helps
+        with ordering the work.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: >
+        Describe the task, not the solution. Knowing the goal often reveals a
+        simpler feature than the one being asked for.
+      placeholder: >
+        I get scanned invoices and need to pull the same three fields out of
+        every one into a spreadsheet.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like SweetPDF to do?
+      validations:
+        required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: How do you manage today?
+      description: >
+        Another program, a workaround inside SweetPDF, or nothing at all. If
+        another PDF editor does this well, naming it and describing how it
+        behaves is genuinely useful.
+
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Would you like to work on it?
+      options:
+        - label: I would be willing to open a pull request for this

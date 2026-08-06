@@ -1,0 +1,84 @@
+name: Bug report
+description: Something is broken, crashes, or does not do what it says
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. If this is a **security** problem - a document
+        that crashes SweetPDF or reads memory it should not - please use
+        [private reporting](https://github.com/sweetpdf/sweetpdf/security/advisories/new)
+        instead of this form.
+
+  - type: textarea
+    id: what-happens
+    attributes:
+      label: What happens
+      description: What did you see, and what did you expect instead?
+      placeholder: |
+        Applying redactions on a scanned page leaves the original text
+        selectable. I expected the text under the mark to be gone.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps, starting from opening the document.
+      placeholder: |
+        1. Open the attached document
+        2. Protect tab, Redact, drag over the first paragraph
+        3. Apply Redactions, then save as a new file
+        4. Reopen the saved file and select the redacted area
+    validations:
+      required: true
+
+  - type: textarea
+    id: document
+    attributes:
+      label: The document
+      description: >
+        Attach the PDF that shows the problem, or a script that generates one.
+        Most PDF bugs are impossible to reproduce without the file. If it is
+        confidential, say so and describe how it was produced (which program,
+        scanned or generated, encrypted, forms, and so on).
+
+  - type: input
+    id: version
+    attributes:
+      label: SweetPDF version
+      description: From Menu → Help → About SweetPDF, or the file name you downloaded.
+      placeholder: 1.0.3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - Linux .deb package
+        - Linux .tar.gz archive
+        - Windows .zip archive
+        - Built from source
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Ubuntu 26.04, Windows 11 24H2, macOS 15
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Terminal output
+      description: >
+        If SweetPDF was started from a terminal, paste anything it printed. On a
+        crash this is often the only clue about where it happened.
+      render: text

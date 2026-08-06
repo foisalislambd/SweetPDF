@@ -1,0 +1,27 @@
+# Text files are normalised to LF in the repository and checked out with the
+# platform's convention, so a Windows contributor does not produce a diff that
+# rewrites whole files.
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+*.sh text eol=lf
+*.cpp text
+*.h text
+*.cmake text
+CMakeLists.txt text
+*.md text
+*.yml text
+*.desktop text eol=lf
+*.ps text eol=lf
+
+*.png binary
+*.jpg binary
+*.pdf binary
+*.ico binary
+*.icns binary
+
+# Screenshots are documentation, not code: keep them out of language statistics
+# and collapse them in pull request diffs.
+docs/screenshots/* linguist-documentation

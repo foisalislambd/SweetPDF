@@ -1,0 +1,63 @@
+# Describes the style the code is already written in, so an editor that formats
+# on save does not fight the existing files. It is deliberately not enforced by
+# CI: please format the lines you touch rather than reflowing whole files.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+
+ColumnLimit: 100
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+AccessModifierOffset: -4
+
+# Functions, classes and enums open on their own line; control flow does not.
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: true
+  AfterStruct: true
+  AfterUnion: true
+  AfterEnum: true
+  AfterFunction: true
+  AfterNamespace: false
+  AfterControlStatement: Never
+  AfterCaseLabel: false
+  BeforeCatch: false
+  BeforeElse: false
+  BeforeLambdaBody: false
+  IndentBraces: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: Yes
+BreakConstructorInitializers: BeforeComma
+ConstructorInitializerIndentWidth: 4
+Cpp11BracedListStyle: false
+EmptyLineBeforeAccessModifier: Always
+FixNamespaceComments: true
+IndentCaseLabels: false
+IndentPPDirectives: None
+NamespaceIndentation: None
+PackConstructorInitializers: Never
+PointerAlignment: Right
+ReferenceAlignment: Pointer
+SpaceAfterTemplateKeyword: false
+SpacesBeforeTrailingComments: 1
+
+# Project headers first, then Qt, then the standard library - the order the
+# existing translation units use.
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve
+IncludeCategories:
+  - Regex: '^"(core|ui)/'
+    Priority: 1
+  - Regex: '^<Q'
+    Priority: 2
+  - Regex: '^<mupdf/'
+    Priority: 3
+  - Regex: '.*'
+    Priority: 4

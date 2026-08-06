@@ -29,6 +29,16 @@ else()
     install(TARGETS sweetpdf RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
     install(FILES "${CMAKE_SOURCE_DIR}/packaging/org.sweetpdf.SweetPDF.desktop"
             DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications")
+    # The AppStream release entry has to name the version being built, and a
+    # hand-maintained one would go stale the moment CI tags a release.
+    string(TIMESTAMP SWEETPDF_BUILD_DATE "%Y-%m-%d" UTC)
+    configure_file(
+        "${CMAKE_SOURCE_DIR}/packaging/org.sweetpdf.SweetPDF.metainfo.xml.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/org.sweetpdf.SweetPDF.metainfo.xml"
+        @ONLY
+    )
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/org.sweetpdf.SweetPDF.metainfo.xml"
+            DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo")
     install(FILES "${CMAKE_SOURCE_DIR}/resources/icons/org.sweetpdf.SweetPDF.png"
             DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/512x512/apps")
 endif()

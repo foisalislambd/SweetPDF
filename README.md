@@ -26,6 +26,10 @@ computer: no account, no upload, no subscription.
 [Architecture](#architecture) · [Releases and CI](#releases-and-ci) ·
 [Roadmap](#roadmap) · [Contributing](#contributing) · [License](#license)
 
+**Project documents** — [Contributing guide](CONTRIBUTING.md) ·
+[Changelog](CHANGELOG.md) · [Security policy](SECURITY.md) ·
+[Code of conduct](CODE_OF_CONDUCT.md)
+
 ## Install
 
 Grab the newest build from the [releases
@@ -402,9 +406,18 @@ want `.dmg` builds.
 
 ## Contributing
 
-Issues and pull requests are welcome. Please keep `core` free of widget
-dependencies, run `cmake --build build` with `SWEETPDF_WARNINGS_AS_ERRORS=ON`
-before opening a pull request, and match the surrounding style.
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers
+getting a build going, the rules that keep the module boundaries intact, the
+style, and what review looks for. In short: keep `core` free of widget
+dependencies, build with `SWEETPDF_WARNINGS_AS_ERRORS=ON`, make document changes
+undoable, and match the surrounding style.
+
+- Found a bug? [Report it](https://github.com/sweetpdf/sweetpdf/issues/new/choose)
+  — please attach the document if you can share it.
+- Found a security problem? Follow the [security policy](SECURITY.md) and report
+  it privately rather than in an issue.
+- Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
+- Notable changes are recorded in the [changelog](CHANGELOG.md).
 
 ## License
 
