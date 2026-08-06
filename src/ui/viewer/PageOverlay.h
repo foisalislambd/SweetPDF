@@ -23,8 +23,10 @@ struct PageOverlay
 
     QList<QPolygonF> strokes; ///< Freehand stroke in progress.
     QRectF pendingShape;      ///< Rectangle, ellipse or redaction being dragged.
+    QPointF pendingLineStart; ///< Line / arrow drag start.
+    QPointF pendingLineEnd;   ///< Line / arrow drag end.
 
-    enum class PendingShape { None, Rectangle, Ellipse, Redaction };
+    enum class PendingShape { None, Rectangle, Ellipse, Redaction, Line };
     PendingShape pendingShapeKind = PendingShape::None;
 
     QColor toolColor;    ///< Colour of the pending stroke or shape.
@@ -33,7 +35,8 @@ struct PageOverlay
     bool isEmpty() const
     {
         return selection.isEmpty() && matches.isEmpty() && activeMatch.isNull()
-            && selectedAnnotation.isNull() && strokes.isEmpty() && pendingShape.isNull();
+            && selectedAnnotation.isNull() && strokes.isEmpty() && pendingShape.isNull()
+            && pendingShapeKind == PendingShape::None;
     }
 };
 

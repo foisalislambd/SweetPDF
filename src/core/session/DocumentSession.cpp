@@ -205,6 +205,31 @@ void DocumentSession::setMarkupOpacity(qreal opacity)
     Q_EMIT markupStyleChanged();
 }
 
+void DocumentSession::setMarkupBorderWidth(qreal width)
+{
+    const qreal clamped = qBound(0.5, width, 12.0);
+    if (qFuzzyCompare(clamped, m_markupBorderWidth))
+        return;
+    m_markupBorderWidth = clamped;
+    Q_EMIT markupStyleChanged();
+}
+
+void DocumentSession::setLineEndStyle(LineEnding style)
+{
+    if (style == m_lineEndStyle)
+        return;
+    m_lineEndStyle = style;
+    Q_EMIT markupStyleChanged();
+}
+
+void DocumentSession::setStampIconName(const QString &name)
+{
+    if (name.isEmpty() || name == m_stampIconName)
+        return;
+    m_stampIconName = name;
+    Q_EMIT markupStyleChanged();
+}
+
 void DocumentSession::setAuthor(const QString &author)
 {
     m_author = author;

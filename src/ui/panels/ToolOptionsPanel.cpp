@@ -17,6 +17,7 @@ namespace sweet::ui {
 namespace {
 
 using core::Tool;
+using core::LineEnding;
 
 constexpr int swatchSize = 22;
 const char *const iconNameProperty = "sweetToolIcon";
@@ -32,34 +33,48 @@ struct ToolInfo
     const char *hint;
     bool colour;
     bool opacity;
+    bool border;
 };
 
 const ToolInfo toolInfo[] = {
     { Tool::Highlight, "highlight", "Highlight",
-      "Drag across text to highlight it. Colour and opacity apply to the next mark.", true,
-      true },
-    { Tool::Underline, "underline", "Underline", "Drag across the text you want underlined.",
-      true, false },
+      "Drag across text to highlight it. Colour and opacity apply to the next mark.", true, true,
+      false },
+    { Tool::Underline, "underline", "Underline", "Drag across the text you want underlined.", true,
+      false, false },
     { Tool::Strikeout, "strikeout", "Strikeout", "Drag across the text you want struck through.",
-      true, false },
-    { Tool::Draw, "draw", "Draw", "Draw freehand on the page. Hold the button and move.", true,
+      true, false, false },
+    { Tool::Squiggly, "squiggly", "Squiggly", "Drag across text to mark it with a wavy underline.",
+      true, false, false },
+    { Tool::Draw, "draw", "Draw", "Draw freehand on the page. Hold the button and move.", true, true,
+      false },
+    { Tool::Note, "note", "Note", "Click the page to leave a note, then type in the bubble.", true,
+      false, false },
+    { Tool::AddText, "add-text", "Add text", "Click where the text should start, then type.", true,
+      false, false },
+    { Tool::Shape, "shape", "Rectangle", "Drag to draw a rectangle.", true, true, true },
+    { Tool::Ellipse, "ellipse", "Ellipse", "Drag to draw an ellipse.", true, true, true },
+    { Tool::Line, "line", "Line", "Drag from one point to another to draw a straight line.", true,
+      true, true },
+    { Tool::Arrow, "arrow", "Arrow", "Drag to draw a line with an arrowhead at the end.", true, true,
       true },
-    { Tool::Note, "note", "Note", "Click the page to leave a note, then type in the bubble.",
-      true, false },
-    { Tool::AddText, "add-text", "Add text", "Click where the text should start, then type.",
-      true, false },
-    { Tool::Shape, "shape", "Rectangle", "Drag to draw a rectangle.", true, true },
-    { Tool::Ellipse, "zoom-area", "Ellipse", "Drag to draw an ellipse.", true, true },
+    { Tool::Stamp, "stamp", "Stamp", "Click the page to place a ready-made stamp.", false, false,
+      false },
     { Tool::Redact, "redact", "Mark redaction",
-      "Drag over anything to be removed, then apply the redactions to delete it for good.",
+      "Drag over anything to be removed, then apply the redactions to delete it for good.", false,
       false, false },
     { Tool::EditText, "edit-text", "Edit text",
-      "Click a line to edit it, or drag across the words you want to change.", false, false },
-    { Tool::EditImage, "edit-image", "Edit image", "Click an image to replace or remove it.",
+      "Click a line to edit it, or drag across the words you want to change.", false, false, false },
+    { Tool::EditImage, "edit-image", "Edit image", "Click an image to replace or remove it.", false,
       false, false },
-    { Tool::AddImage, "add-image", "Add image", "Click where the image should go.", false,
+    { Tool::AddImage, "add-image", "Add image", "Click where the image should go.", false, false,
       false },
 };
+
+bool isShapeFamily(Tool tool)
+{
+    return tool == Tool::Shape || tool == Tool::Ellipse || tool == Tool::Line || tool == Tool::Arrow;
+}
 
 const ToolInfo *infoFor(Tool tool)
 {
@@ -168,8 +183,12 @@ void ToolOptionsPanel::rebuild()
         delete item;
     }
     m_swatches.clear();
+    m_endingButtons.clear();
+    m_stampButtons.clear();
     m_opacity = nullptr;
     m_opacityValue = nullptr;
+    m_borderWidth = nullptr;
+    m_borderWidthValue = nullptr;
 
     const ToolInfo *info = infoFor(m_tool);
     m_hasOptions = info != nullptr;
@@ -186,17 +205,25 @@ void ToolOptionsPanel::rebuild()
     m_hint->setText(tr(info->hint));
     m_icon->setProperty(iconNameProperty, QString::fromLatin1(info->icon));
 
+    if (isShapeFamily(m_tool))
+        m_body->addWidget(buildShapePresets(this));
+    if (m_tool == Tool::Stamp)
+        m_body->addWidget(buildStampPresets(this));
     if (info->colour)
         m_body->addWidget(buildColourRow(this));
     if (info->opacity)
         m_body->addWidget(buildOpacityRow(this));
+    if (info->border)
+        m_body->addWidget(buildBorderWidthRow(this));
+    if (m_tool == Tool::Arrow)
+        m_body->addWidget(buildArrowEndingRow(this));
 
     if (m_tool == Tool::Redact) {
         m_body->addWidget(buildCommandButton(QStringLiteral("applyRedactions"),
                                              tr("Apply redactions"), QStringLiteral("redact"),
                                              this));
     }
-    if (info->colour) {
+    if (info->colour || m_tool == Tool::Stamp) {
         m_body->addWidget(buildCommandButton(QStringLiteral("deleteAnnotation"),
                                              tr("Delete selected comment"),
                                              QStringLiteral("trash"), this));
@@ -287,6 +314,163 @@ QWidget *ToolOptionsPanel::buildOpacityRow(QWidget *parent)
     return holder;
 }
 
+QWidget *ToolOptionsPanel::buildBorderWidthRow(QWidget *parent)
+{
+    auto *holder = new QWidget(parent);
+    auto *column = new QVBoxLayout(holder);
+    column->setContentsMargins(0, 0, 0, 0);
+    column->setSpacing(4);
+
+    auto *heading = new QHBoxLayout;
+    heading->setContentsMargins(0, 0, 0, 0);
+    auto *caption = new QLabel(tr("Border"), holder);
+    caption->setObjectName(QStringLiteral("SectionLabel"));
+    heading->addWidget(caption, 1);
+    m_borderWidthValue = new QLabel(holder);
+    m_borderWidthValue->setFont(themeFont(TextRole::Caption));
+    heading->addWidget(m_borderWidthValue, 0, Qt::AlignRight);
+    column->addLayout(heading);
+
+    m_borderWidth = new QSlider(Qt::Horizontal, holder);
+    m_borderWidth->setRange(1, 24); // half-points: 0.5 … 12
+    m_borderWidth->setToolTip(tr("Stroke width for new shapes and lines"));
+    connect(m_borderWidth, &QSlider::valueChanged, this, [this](int value) {
+        const qreal points = value / 2.0;
+        if (m_borderWidthValue)
+            m_borderWidthValue->setText(tr("%1 pt").arg(points, 0, 'f', 1));
+        if (m_session)
+            m_session->setMarkupBorderWidth(points);
+    });
+    column->addWidget(m_borderWidth);
+    return holder;
+}
+
+QWidget *ToolOptionsPanel::buildShapePresets(QWidget *parent)
+{
+    auto *holder = new QWidget(parent);
+    auto *column = new QVBoxLayout(holder);
+    column->setContentsMargins(0, 0, 0, 0);
+    column->setSpacing(4);
+
+    auto *caption = new QLabel(tr("Shape"), holder);
+    caption->setObjectName(QStringLiteral("SectionLabel"));
+    column->addWidget(caption);
+
+    auto *row = new QHBoxLayout;
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(4);
+
+    const struct {
+        const char *actionId;
+        const char *icon;
+        const char *tip;
+        Tool tool;
+    } presets[] = {
+        { "addShape", "shape", "Rectangle", Tool::Shape },
+        { "addEllipse", "ellipse", "Ellipse", Tool::Ellipse },
+        { "addLine", "line", "Line", Tool::Line },
+        { "addArrow", "arrow", "Arrow", Tool::Arrow },
+    };
+
+    for (const auto &preset : presets) {
+        auto *chip = new QToolButton(holder);
+        chip->setObjectName(QStringLiteral("ToolChip"));
+        chip->setCheckable(true);
+        chip->setChecked(m_tool == preset.tool);
+        chip->setAutoRaise(true);
+        chip->setIconSize(QSize(18, 18));
+        chip->setToolTip(tr(preset.tip));
+        chip->setProperty(iconNameProperty, QString::fromLatin1(preset.icon));
+        const QString actionId = QString::fromLatin1(preset.actionId);
+        connect(chip, &QToolButton::clicked, this,
+                [this, actionId] { Q_EMIT commandRequested(actionId); });
+        row->addWidget(chip);
+    }
+    row->addStretch(1);
+    column->addLayout(row);
+    return holder;
+}
+
+QWidget *ToolOptionsPanel::buildArrowEndingRow(QWidget *parent)
+{
+    auto *holder = new QWidget(parent);
+    auto *column = new QVBoxLayout(holder);
+    column->setContentsMargins(0, 0, 0, 0);
+    column->setSpacing(4);
+
+    auto *caption = new QLabel(tr("Arrowhead"), holder);
+    caption->setObjectName(QStringLiteral("SectionLabel"));
+    column->addWidget(caption);
+
+    auto *row = new QHBoxLayout;
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(4);
+
+    const struct {
+        LineEnding style;
+        const char *label;
+    } endings[] = {
+        { LineEnding::None, "None" },
+        { LineEnding::OpenArrow, "Open" },
+        { LineEnding::ClosedArrow, "Closed" },
+    };
+
+    for (const auto &ending : endings) {
+        auto *button = new QToolButton(holder);
+        button->setObjectName(QStringLiteral("ToolChip"));
+        button->setCheckable(true);
+        button->setAutoRaise(true);
+        button->setText(tr(ending.label));
+        button->setProperty("sweetLineEnding", static_cast<int>(ending.style));
+        connect(button, &QToolButton::clicked, this, [this, style = ending.style] {
+            if (m_session)
+                m_session->setLineEndStyle(style);
+        });
+        row->addWidget(button);
+        m_endingButtons.append(button);
+    }
+    row->addStretch(1);
+    column->addLayout(row);
+    return holder;
+}
+
+QWidget *ToolOptionsPanel::buildStampPresets(QWidget *parent)
+{
+    auto *holder = new QWidget(parent);
+    auto *column = new QVBoxLayout(holder);
+    column->setContentsMargins(0, 0, 0, 0);
+    column->setSpacing(4);
+
+    auto *caption = new QLabel(tr("Stamp"), holder);
+    caption->setObjectName(QStringLiteral("SectionLabel"));
+    column->addWidget(caption);
+
+    auto *row = new QHBoxLayout;
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(4);
+
+    const char *names[] = { "Draft", "Approved", "Confidential", "Final" };
+    for (const char *name : names) {
+        auto *chip = new QToolButton(holder);
+        chip->setObjectName(QStringLiteral("ToolChip"));
+        chip->setCheckable(true);
+        chip->setAutoRaise(true);
+        chip->setText(QString::fromLatin1(name));
+        chip->setProperty("sweetStampName", QString::fromLatin1(name));
+        connect(chip, &QToolButton::clicked, this, [this, name = QString::fromLatin1(name)] {
+            if (!m_session)
+                return;
+            m_session->setStampIconName(name);
+            Q_EMIT commandRequested(QStringLiteral("toolStamp"));
+        });
+        row->addWidget(chip);
+        m_stampButtons.append(chip);
+    }
+    row->addStretch(1);
+    column->addLayout(row);
+    return holder;
+}
+
 QWidget *ToolOptionsPanel::buildCommandButton(const QString &actionId, const QString &text,
                                               const QString &iconName, QWidget *parent)
 {
@@ -318,6 +502,27 @@ void ToolOptionsPanel::applyStyleFromSession()
         if (m_opacityValue)
             m_opacityValue->setText(tr("%1%").arg(percent));
     }
+
+    if (m_borderWidth) {
+        const int ticks = qRound(m_session->markupBorderWidth() * 2.0);
+        QSignalBlocker blocker(m_borderWidth);
+        m_borderWidth->setValue(ticks);
+        if (m_borderWidthValue)
+            m_borderWidthValue->setText(
+                tr("%1 pt").arg(m_session->markupBorderWidth(), 0, 'f', 1));
+    }
+
+    const LineEnding ending = m_session->lineEndStyle();
+    for (QToolButton *button : m_endingButtons) {
+        const auto style = static_cast<LineEnding>(button->property("sweetLineEnding").toInt());
+        button->setChecked(style == ending);
+    }
+
+    const QString stamp = m_session->stampIconName();
+    for (QToolButton *button : m_stampButtons) {
+        const QString name = button->property("sweetStampName").toString();
+        button->setChecked(name == stamp);
+    }
 }
 
 void ToolOptionsPanel::retint()
@@ -338,6 +543,8 @@ void ToolOptionsPanel::retint()
             continue;
         if (auto *button = qobject_cast<QPushButton *>(child))
             button->setIcon(icon(childIcon));
+        else if (auto *tool = qobject_cast<QToolButton *>(child))
+            tool->setIcon(icon(childIcon));
     }
 
     applyStyleFromSession();

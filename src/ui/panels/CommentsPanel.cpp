@@ -38,20 +38,23 @@ QString iconNameFor(core::AnnotationType type)
     case core::AnnotationType::Underline:
         return QStringLiteral("underline");
     case core::AnnotationType::StrikeOut:
-    case core::AnnotationType::Squiggly:
         return QStringLiteral("strikeout");
+    case core::AnnotationType::Squiggly:
+        return QStringLiteral("squiggly");
     case core::AnnotationType::Ink:
         return QStringLiteral("draw");
     case core::AnnotationType::FreeText:
         return QStringLiteral("add-text");
     case core::AnnotationType::Square:
-    case core::AnnotationType::Circle:
-    case core::AnnotationType::Line:
         return QStringLiteral("shape");
+    case core::AnnotationType::Circle:
+        return QStringLiteral("ellipse");
+    case core::AnnotationType::Line:
+        return QStringLiteral("line");
     case core::AnnotationType::Redact:
         return QStringLiteral("redact");
     case core::AnnotationType::Stamp:
-        return QStringLiteral("star");
+        return QStringLiteral("stamp");
     default:
         return QStringLiteral("comment");
     }

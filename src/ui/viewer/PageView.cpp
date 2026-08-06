@@ -41,14 +41,21 @@ core::AnnotationType markupTypeFor(core::Tool tool)
         return core::AnnotationType::Underline;
     case core::Tool::Strikeout:
         return core::AnnotationType::StrikeOut;
+    case core::Tool::Squiggly:
+        return core::AnnotationType::Squiggly;
     default:
         return core::AnnotationType::Other;
     }
 }
 
-bool isShapeTool(core::Tool tool)
+bool isRectShapeTool(core::Tool tool)
 {
     return tool == core::Tool::Shape || tool == core::Tool::Ellipse || tool == core::Tool::Redact;
+}
+
+bool isLineTool(core::Tool tool)
+{
+    return tool == core::Tool::Line || tool == core::Tool::Arrow;
 }
 
 } // namespace
@@ -165,6 +172,7 @@ void PageView::rebuildScene()
     m_strokes.clear();
     m_currentStroke.clear();
     m_pendingShape = QRectF();
+    m_lineEnd = QPointF();
     m_selectedAnnotation = 0;
     m_selectedAnnotationPage = -1;
     m_matches.clear();
@@ -252,6 +260,7 @@ void PageView::applyTool()
         m_strokes.clear();
         m_currentStroke.clear();
         m_pendingShape = QRectF();
+        m_lineEnd = QPointF();
         refreshOverlay(page);
     }
     m_selectingText = false;
@@ -269,17 +278,21 @@ void PageView::applyTool()
     case core::Tool::Highlight:
     case core::Tool::Underline:
     case core::Tool::Strikeout:
+    case core::Tool::Squiggly:
     case core::Tool::EditText:
         viewport()->setCursor(Qt::IBeamCursor);
         break;
     case core::Tool::Draw:
     case core::Tool::Shape:
     case core::Tool::Ellipse:
+    case core::Tool::Line:
+    case core::Tool::Arrow:
     case core::Tool::Redact:
         viewport()->setCursor(Qt::CrossCursor);
         break;
     case core::Tool::Note:
     case core::Tool::AddText:
+    case core::Tool::Stamp:
         viewport()->setCursor(Qt::PointingHandCursor);
         break;
     default:
@@ -504,7 +517,8 @@ void PageView::refreshOverlay(int pageIndex)
             overlay.strokes.append(m_currentStroke);
         overlay.toolWidth = 2.0;
 
-        if (!m_pendingShape.isNull()) {
+        if (!m_pendingShape.isNull()
+            || (m_drawing && isLineTool(m_session->tool()))) {
             overlay.pendingShape = m_pendingShape;
             switch (m_placement != Placement::None ? core::Tool::Shape : m_session->tool()) {
             case core::Tool::Ellipse:
@@ -513,10 +527,20 @@ void PageView::refreshOverlay(int pageIndex)
             case core::Tool::Redact:
                 overlay.pendingShapeKind = PageOverlay::PendingShape::Redaction;
                 break;
+            case core::Tool::Line:
+            case core::Tool::Arrow:
+                overlay.pendingShapeKind = PageOverlay::PendingShape::Line;
+                overlay.pendingLineStart = m_shapeOrigin;
+                overlay.pendingLineEnd = m_lineEnd;
+                overlay.toolWidth = m_session->markupBorderWidth();
+                break;
             default:
                 overlay.pendingShapeKind = PageOverlay::PendingShape::Rectangle;
                 break;
             }
+            if (isRectShapeTool(m_session->tool())
+                || (m_placement == Placement::None && isLineTool(m_session->tool())))
+                overlay.toolWidth = m_session->markupBorderWidth();
         }
     }
 
@@ -805,6 +829,20 @@ void PageView::createTextBoxAt(int pageIndex, const QPointF &pagePoint)
     m_session->addAnnotation(spec);
 }
 
+void PageView::createStampAt(int pageIndex, const QPointF &pagePoint)
+{
+    constexpr qreal width = 140.0;
+    constexpr qreal height = 40.0;
+    core::AnnotationSpec spec;
+    spec.type = core::AnnotationType::Stamp;
+    spec.pageIndex = pageIndex;
+    spec.rect = QRectF(pagePoint.x() - width / 2.0, pagePoint.y() - height / 2.0, width, height);
+    spec.iconName = m_session->stampIconName();
+    spec.color = m_session->markupColor();
+    spec.author = m_session->author();
+    m_session->addAnnotation(spec);
+}
+
 void PageView::commitPendingAnnotation()
 {
     const core::Tool tool = m_session->tool();
@@ -818,11 +856,31 @@ void PageView::commitPendingAnnotation()
         spec.borderWidth = 2.0;
         spec.author = m_session->author();
         m_session->addAnnotation(spec);
-    } else if (isShapeTool(tool) && m_pendingShape.width() > 2 && m_pendingShape.height() > 2) {
+    } else if (isLineTool(tool)) {
+        const QPointF delta = m_lineEnd - m_shapeOrigin;
+        if (QPointF::dotProduct(delta, delta) > 4.0) {
+            core::AnnotationSpec spec;
+            spec.type = core::AnnotationType::Line;
+            spec.pageIndex = m_drawPage;
+            spec.lineStart = m_shapeOrigin;
+            spec.lineEnd = m_lineEnd;
+            spec.hasLineEndpoints = true;
+            spec.lineStartStyle = core::LineEnding::None;
+            spec.lineEndStyle =
+                tool == core::Tool::Arrow ? m_session->lineEndStyle() : core::LineEnding::None;
+            spec.color = m_session->markupColor();
+            spec.opacity = m_session->markupOpacity();
+            spec.borderWidth = m_session->markupBorderWidth();
+            spec.author = m_session->author();
+            m_session->addAnnotation(spec);
+        }
+    } else if (isRectShapeTool(tool) && m_pendingShape.width() > 2 && m_pendingShape.height() > 2) {
         core::AnnotationSpec spec;
         spec.pageIndex = m_drawPage;
         spec.rect = m_pendingShape;
         spec.author = m_session->author();
+        spec.opacity = m_session->markupOpacity();
+        spec.borderWidth = m_session->markupBorderWidth();
         switch (tool) {
         case core::Tool::Ellipse:
             spec.type = core::AnnotationType::Circle;
@@ -831,6 +889,7 @@ void PageView::commitPendingAnnotation()
         case core::Tool::Redact:
             spec.type = core::AnnotationType::Redact;
             spec.color = Qt::black;
+            spec.opacity = 1.0;
             break;
         default:
             spec.type = core::AnnotationType::Square;
@@ -844,6 +903,7 @@ void PageView::commitPendingAnnotation()
     m_strokes.clear();
     m_currentStroke.clear();
     m_pendingShape = QRectF();
+    m_lineEnd = QPointF();
     m_drawing = false;
     m_drawPage = -1;
     refreshOverlay(page);
@@ -1180,7 +1240,8 @@ void PageView::mousePressEvent(QMouseEvent *event)
             case core::Tool::Select:
             case core::Tool::Highlight:
             case core::Tool::Underline:
-            case core::Tool::Strikeout: {
+            case core::Tool::Strikeout:
+            case core::Tool::Squiggly: {
                 if (auto text = textOf(pageIndex)) {
                     m_selectionAnchor = text->indexAt(pagePoint);
                     m_selectingText = true;
@@ -1206,8 +1267,23 @@ void PageView::mousePressEvent(QMouseEvent *event)
                 refreshOverlay(pageIndex);
                 event->accept();
                 return;
+            case core::Tool::Line:
+            case core::Tool::Arrow:
+                m_drawPage = pageIndex;
+                m_drawing = true;
+                m_shapeOrigin = pagePoint;
+                m_lineEnd = pagePoint;
+                m_pendingShape = QRectF();
+                refreshOverlay(pageIndex);
+                event->accept();
+                return;
             case core::Tool::Note:
                 createNoteAt(pageIndex, pagePoint);
+                m_session->setTool(core::Tool::Select);
+                event->accept();
+                return;
+            case core::Tool::Stamp:
+                createStampAt(pageIndex, pagePoint);
                 m_session->setTool(core::Tool::Select);
                 event->accept();
                 return;
@@ -1257,6 +1333,8 @@ void PageView::mouseMoveEvent(QMouseEvent *event)
                 m_pendingShape = QRectF(m_shapeOrigin, pagePoint).normalized();
             else if (m_session->tool() == core::Tool::Draw)
                 m_currentStroke.append(pagePoint);
+            else if (isLineTool(m_session->tool()))
+                m_lineEnd = pagePoint;
             else
                 m_pendingShape = QRectF(m_shapeOrigin, pagePoint).normalized();
             refreshOverlay(m_drawPage);
@@ -1433,6 +1511,8 @@ void PageView::contextMenuEvent(QContextMenuEvent *event)
                        [this] { markUpSelection(core::AnnotationType::Underline); });
         menu.addAction(icon(QStringLiteral("strikeout")), tr("Strikeout"), this,
                        [this] { markUpSelection(core::AnnotationType::StrikeOut); });
+        menu.addAction(icon(QStringLiteral("squiggly")), tr("Squiggly"), this,
+                       [this] { markUpSelection(core::AnnotationType::Squiggly); });
         menu.addAction(icon(QStringLiteral("redact")), tr("Mark for redaction"), this,
                        [this] { markUpSelection(core::AnnotationType::Redact); });
         menu.addSeparator();

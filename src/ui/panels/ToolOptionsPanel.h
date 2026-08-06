@@ -49,6 +49,10 @@ private:
 
     QWidget *buildColourRow(QWidget *parent);
     QWidget *buildOpacityRow(QWidget *parent);
+    QWidget *buildBorderWidthRow(QWidget *parent);
+    QWidget *buildShapePresets(QWidget *parent);
+    QWidget *buildArrowEndingRow(QWidget *parent);
+    QWidget *buildStampPresets(QWidget *parent);
     QWidget *buildCommandButton(const QString &actionId, const QString &text,
                                 const QString &iconName, QWidget *parent);
 
@@ -62,7 +66,11 @@ private:
     QVBoxLayout *m_body = nullptr;
     QSlider *m_opacity = nullptr;
     QLabel *m_opacityValue = nullptr;
+    QSlider *m_borderWidth = nullptr;
+    QLabel *m_borderWidthValue = nullptr;
     QList<QToolButton *> m_swatches;
+    QList<QToolButton *> m_endingButtons;
+    QList<QToolButton *> m_stampButtons;
 };
 
 } // namespace sweet::ui

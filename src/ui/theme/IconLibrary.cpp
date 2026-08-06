@@ -117,6 +117,13 @@ const QHash<QString, QString> &bodies()
         { QStringLiteral("shape"),
           QStringLiteral("<rect x='3.6' y='13.2' width='7.2' height='7.2' rx='1.2' fill='@F'/>"
                          "<path d='M13.8 3.6 20.4 10.2 17 13.6 10.4 7Z'/>") },
+        { QStringLiteral("ellipse"),
+          QStringLiteral("<ellipse cx='12' cy='12' rx='8.2' ry='5.8' fill='@F'/>") },
+        { QStringLiteral("line"),
+          QStringLiteral("<path d='M4.4 19.2 19.6 4.8'/>") },
+        { QStringLiteral("arrow"),
+          QStringLiteral("<path d='M4.4 19.2 16.8 6.8'/>"
+                         "<path d='M11.2 6.2h6.2v6.2'/><path d='M17.4 6.2 11.6 12'/>") },
         { QStringLiteral("link"),
           QStringLiteral("<path d='M10.2 13.4a3.4 3.4 0 0 0 4.8 0l2.9-2.9a3.4 3.4 0 0 0-4.8-4.8l-1.5 1.5'/>"
                          "<path d='M13.8 10.6a3.4 3.4 0 0 0-4.8 0L6.1 13.5a3.4 3.4 0 0 0 4.8 4.8l1.5-1.5'/>") },
@@ -139,6 +146,9 @@ const QHash<QString, QString> &bodies()
           QStringLiteral("<path d='M4.6 12h14.8'/>"
                          "<path d='M8 7.8c0-2 1.8-3.4 4-3.4s4 1.2 4 2.8'/>"
                          "<path d='M16 16.2c0 2-1.8 3.4-4 3.4s-4-1.2-4-2.8'/>") },
+        { QStringLiteral("squiggly"),
+          QStringLiteral("<path d='M6.4 7.2v6.2a4.4 4.4 0 0 0 8.8 0V7.2'/>"
+                         "<path d='M4.6 19.2q1.4-1.8 2.8 0t2.8 0 2.8 0 2.8 0 2.8 0'/>") },
         { QStringLiteral("draw"),
           QStringLiteral("<path d='M4 20l1.2-4.4L16.2 4.6l3.2 3.2L8.4 18.8Z' fill='@F'/>"
                          "<path d='M14 6.8 17.2 10'/>") },
@@ -146,6 +156,9 @@ const QHash<QString, QString> &bodies()
           QStringLiteral("<path d='M5 4.8h14v9.8l-4.4 4.6H5Z' fill='@F'/>"
                          "<path d='M14.6 19.2v-4.6H19'/>"
                          "<path d='M8.4 9h7.2'/><path d='M8.4 12.4h4.6'/>") },
+        { QStringLiteral("stamp"),
+          QStringLiteral("<rect x='3.6' y='7.2' width='16.8' height='9.6' rx='1.4' fill='@F'/>"
+                         "<path d='M7.2 12h9.6'/><path d='M8.4 4.8h7.2'/><path d='M8.4 19.2h7.2'/>") },
         { QStringLiteral("comment"),
           QStringLiteral("<path d='M4 5.6h16v9.8h-8.4L6.6 19v-3.6H4Z' fill='@F'/>"
                          "<path d='M8 9.2h8'/><path d='M8 12.2h5'/>") },

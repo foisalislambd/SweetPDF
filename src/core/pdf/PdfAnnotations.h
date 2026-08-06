@@ -32,6 +32,20 @@ enum class AnnotationType {
     Other,
 };
 
+/// Line-cap styles for Line annotations. Values match MuPDF's pdf_line_ending.
+enum class LineEnding {
+    None = 0,
+    Square,
+    Circle,
+    Diamond,
+    OpenArrow,
+    ClosedArrow,
+    Butt,
+    ROpenArrow,
+    RClosedArrow,
+    Slash,
+};
+
 /// An annotation as the UI sees it. `objectNumber` is the PDF object number,
 /// which stays stable while the document is open, so it is what commands and
 /// panels refer to rather than a position in a list.
@@ -45,10 +59,14 @@ struct Annotation
     QList<QPolygonF> strokes; ///< Ink strokes, in page points.
     QPointF lineStart;        ///< Line annotation start, in page points.
     QPointF lineEnd;          ///< Line annotation end, in page points.
+    LineEnding lineStartStyle = LineEnding::None;
+    LineEnding lineEndStyle = LineEnding::None;
     QColor color;
     qreal opacity = 1.0;
+    qreal borderWidth = 1.5;
     QString contents;        ///< Note body, or the text of a FreeText.
     QString author;
+    QString iconName;        ///< Stamp name (Draft, Approved, …).
     QDateTime modified;
     bool editable = true;    ///< False for form fields and unknown types.
 };
@@ -58,12 +76,14 @@ struct AnnotationSpec
 {
     AnnotationType type = AnnotationType::Highlight;
     int pageIndex = 0;
-    QRectF rect;                    ///< Square, Circle, Note, FreeText, Redact.
+    QRectF rect;                    ///< Square, Circle, Note, FreeText, Redact, Stamp.
     QList<QRectF> quads;            ///< Text markup.
     QList<QPolygonF> strokes;       ///< Ink, in page points.
     QPointF lineStart;              ///< Line endpoints (when type is Line).
     QPointF lineEnd;
     bool hasLineEndpoints = false;  ///< True when lineStart/lineEnd are set.
+    LineEnding lineStartStyle = LineEnding::None;
+    LineEnding lineEndStyle = LineEnding::None;
     QColor color = QColor(0xFF, 0xDD, 0x4A);
     QColor interiorColor;           ///< Fill for Square and Circle; invalid means none.
     qreal opacity = 1.0;
@@ -71,6 +91,7 @@ struct AnnotationSpec
     qreal fontSize = 11.0;
     QString contents;
     QString author;
+    QString iconName;               ///< Stamp icon name (Draft, Approved, …).
 };
 
 /// Reads and writes the annotations of one document.

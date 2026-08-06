@@ -188,12 +188,30 @@ Annotation describe(fz_context *ctx, pdf_annot *annot, int pageIndex)
             pdf_annot_line(ctx, annot, &a, &b);
             described.lineStart = QPointF(a.x, a.y);
             described.lineEnd = QPointF(b.x, b.y);
+            enum pdf_line_ending startStyle = PDF_ANNOT_LE_NONE;
+            enum pdf_line_ending endStyle = PDF_ANNOT_LE_NONE;
+            pdf_annot_line_ending_styles(ctx, annot, &startStyle, &endStyle);
+            described.lineStartStyle = static_cast<LineEnding>(startStyle);
+            described.lineEndStyle = static_cast<LineEnding>(endStyle);
         }
         fz_catch(ctx) {
             described.lineStart = {};
             described.lineEnd = {};
         }
+    } else if (described.type == AnnotationType::Stamp) {
+        fz_try(ctx) {
+            if (const char *name = pdf_annot_icon_name(ctx, annot))
+                described.iconName = QString::fromUtf8(name);
+        }
+        fz_catch(ctx) {
+            described.iconName.clear();
+        }
     }
+
+    fz_try(ctx)
+        described.borderWidth = pdf_annot_border_width(ctx, annot);
+    fz_catch(ctx)
+        described.borderWidth = 1.5;
 
     return described;
 }
@@ -335,6 +353,9 @@ int add(PdfDocument &document, const AnnotationSpec &spec)
                 pdf_set_annot_line(ctx, annot, fz_make_point(float(a.x()), float(a.y())),
                                    fz_make_point(float(b.x()), float(b.y())));
                 pdf_set_annot_border_width(ctx, annot, float(spec.borderWidth));
+                pdf_set_annot_line_ending_styles(
+                    ctx, annot, static_cast<enum pdf_line_ending>(spec.lineStartStyle),
+                    static_cast<enum pdf_line_ending>(spec.lineEndStyle));
             } else {
                 if (!spec.rect.isEmpty())
                     pdf_set_annot_rect(ctx, annot, toFzRect(spec.rect));
@@ -344,6 +365,8 @@ int add(PdfDocument &document, const AnnotationSpec &spec)
                     if (const int count = colorComponents(spec.interiorColor, interior))
                         pdf_set_annot_interior_color(ctx, annot, count, interior);
                 }
+                if (spec.type == AnnotationType::Stamp && !spec.iconName.isEmpty())
+                    pdf_set_annot_icon_name(ctx, annot, spec.iconName.toUtf8().constData());
                 if (spec.type == AnnotationType::FreeText) {
                     float text[4] = { 0, 0, 0, 0 };
                     const int count = colorComponents(spec.color, text);

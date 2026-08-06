@@ -20,10 +20,14 @@ AnnotationSpec specFrom(const Annotation &annotation)
     spec.lineStart = annotation.lineStart;
     spec.lineEnd = annotation.lineEnd;
     spec.hasLineEndpoints = annotation.type == AnnotationType::Line;
+    spec.lineStartStyle = annotation.lineStartStyle;
+    spec.lineEndStyle = annotation.lineEndStyle;
     spec.color = annotation.color;
     spec.opacity = annotation.opacity;
+    spec.borderWidth = annotation.borderWidth;
     spec.contents = annotation.contents;
     spec.author = annotation.author;
+    spec.iconName = annotation.iconName;
     return spec;
 }
 

@@ -259,14 +259,19 @@ void MainWindow::createActions()
           QKeySequence() },
         { "toolStrikeout", tr("Strikeout"), QStringLiteral("strikeout"), core::Tool::Strikeout,
           QKeySequence() },
+        { "toolSquiggly", tr("Squiggly"), QStringLiteral("squiggly"), core::Tool::Squiggly,
+          QKeySequence() },
         { "toolDraw", tr("Draw"), QStringLiteral("draw"), core::Tool::Draw, QKeySequence() },
         { "toolNote", tr("Note"), QStringLiteral("note"), core::Tool::Note, QKeySequence() },
         { "addText", tr("Add Text"), QStringLiteral("add-text"), core::Tool::AddText,
           QKeySequence() },
         { "addShape", tr("Rectangle"), QStringLiteral("shape"), core::Tool::Shape,
           QKeySequence() },
-        { "addEllipse", tr("Ellipse"), QStringLiteral("zoom-area"), core::Tool::Ellipse,
+        { "addEllipse", tr("Ellipse"), QStringLiteral("ellipse"), core::Tool::Ellipse,
           QKeySequence() },
+        { "addLine", tr("Line"), QStringLiteral("line"), core::Tool::Line, QKeySequence() },
+        { "addArrow", tr("Arrow"), QStringLiteral("arrow"), core::Tool::Arrow, QKeySequence() },
+        { "toolStamp", tr("Stamp"), QStringLiteral("stamp"), core::Tool::Stamp, QKeySequence() },
         { "toolRedact", tr("Mark Redaction"), QStringLiteral("redact"), core::Tool::Redact,
           QKeySequence() },
         { "toolEditText", tr("Edit Text"), QStringLiteral("edit-text"), core::Tool::EditText,
@@ -532,10 +537,9 @@ void MainWindow::createActions()
                                            QStringLiteral("panel-right"),
                                            QKeySequence(Qt::CTRL | Qt::Key_J));
     toggleProperties->setCheckable(true);
-    toggleProperties->setChecked(true);
-    connect(toggleProperties, &QAction::toggled, this, [this](bool on) {
-        if (m_inspector)
-            m_inspector->setVisible(on);
+    toggleProperties->setChecked(false);
+    connect(toggleProperties, &QAction::toggled, this, [this](bool) {
+        updateInspectorVisibility();
     });
 
     QAction *theme = makeAction(QStringLiteral("toggleTheme"), tr("Dark Mode"),
@@ -569,8 +573,12 @@ void MainWindow::createActions()
     shortCaption(QStringLiteral("toolStrikeout"), tr("Strike"));
     shortCaption(QStringLiteral("toolHighlight"), tr("Highlight"));
     shortCaption(QStringLiteral("toolUnderline"), tr("Underline"));
+    shortCaption(QStringLiteral("toolSquiggly"), tr("Squiggly"));
     shortCaption(QStringLiteral("addText"), tr("Text"));
     shortCaption(QStringLiteral("toolEditText"), tr("Edit"));
+    shortCaption(QStringLiteral("addLine"), tr("Line"));
+    shortCaption(QStringLiteral("addArrow"), tr("Arrow"));
+    shortCaption(QStringLiteral("toolStamp"), tr("Stamp"));
     shortCaption(QStringLiteral("toolRedact"), tr("Redact"));
     shortCaption(QStringLiteral("applyRedactions"), tr("Apply"));
     shortCaption(QStringLiteral("rotatePagesLeft"), tr("Left"));
@@ -748,8 +756,10 @@ void MainWindow::createRibbon()
     markupGroup->addAction(action(QStringLiteral("toolHighlight")));
     markupGroup->addAction(action(QStringLiteral("toolUnderline")));
     markupGroup->addAction(action(QStringLiteral("toolStrikeout")));
+    markupGroup->addAction(action(QStringLiteral("toolSquiggly")));
     markupGroup->addAction(action(QStringLiteral("toolDraw")));
     markupGroup->addAction(action(QStringLiteral("toolNote")));
+    markupGroup->addAction(action(QStringLiteral("toolStamp")));
 
     RibbonGroup *organiseGroup = home->addGroup(tr("Organise"));
     organiseGroup->addAction(action(QStringLiteral("ocr")));
@@ -760,11 +770,14 @@ void MainWindow::createRibbon()
     RibbonPage *editPage = m_ribbon->addPage(tr("Edit"));
     RibbonGroup *editContent = editPage->addGroup(tr("Content"));
     editContent->addAction(action(QStringLiteral("addText")));
-    editContent->addAction(action(QStringLiteral("addShape")));
-    editContent->addAction(action(QStringLiteral("addEllipse")));
     editContent->addAction(action(QStringLiteral("toolEditText")));
     editContent->addCompactAction(action(QStringLiteral("editImage")));
     editContent->addCompactAction(action(QStringLiteral("addImage")));
+    RibbonGroup *editShapes = editPage->addGroup(tr("Shapes"));
+    editShapes->addAction(action(QStringLiteral("addShape")));
+    editShapes->addAction(action(QStringLiteral("addEllipse")));
+    editShapes->addAction(action(QStringLiteral("addLine")));
+    editShapes->addAction(action(QStringLiteral("addArrow")));
     RibbonGroup *editLinks = editPage->addGroup(tr("Links"));
     editLinks->addAction(action(QStringLiteral("addLink")));
     RibbonGroup *editClipboard = editPage->addGroup(tr("Clipboard"));
@@ -779,9 +792,11 @@ void MainWindow::createRibbon()
     markup->addAction(action(QStringLiteral("toolHighlight")));
     markup->addAction(action(QStringLiteral("toolUnderline")));
     markup->addAction(action(QStringLiteral("toolStrikeout")));
+    markup->addAction(action(QStringLiteral("toolSquiggly")));
     RibbonGroup *drawing = commentPage->addGroup(tr("Drawing"));
     drawing->addAction(action(QStringLiteral("toolDraw")));
     drawing->addAction(action(QStringLiteral("toolNote")));
+    drawing->addAction(action(QStringLiteral("toolStamp")));
     drawing->addAction(action(QStringLiteral("addText")));
     RibbonGroup *commentManage = commentPage->addGroup(tr("Manage"));
     commentManage->addAction(action(QStringLiteral("deleteAnnotation")));
@@ -916,7 +931,7 @@ void MainWindow::createCentralArea()
                     command->trigger();
             });
     connect(m_toolOptions, &ToolOptionsPanel::optionsChanged, this,
-            [this] { m_toolOptions->setVisible(m_toolOptions->hasOptions()); });
+            &MainWindow::updateInspectorVisibility);
 
     m_properties = new PropertiesPanel(m_inspector);
     inspectorColumn->addWidget(m_properties, 1);
@@ -1236,8 +1251,7 @@ void MainWindow::showWelcomeIfEmpty()
     } else if (!m_layoutModeReady) {
         applyLayoutMode(true);
     } else {
-        // Welcome hid the inspector; put it back the way the last mode left it.
-        m_inspector->setVisible(action(QStringLiteral("toggleProperties"))->isChecked());
+        updateInspectorVisibility();
     }
 }
 
@@ -1279,10 +1293,9 @@ void MainWindow::applyLayoutMode(bool force)
     m_ribbon->setCollapsed(narrow);
     m_zoomSlider->setVisible(!narrow);
 
-    // Mode change resets panel visibility to the mode's defaults. Manual toggles
-    // after that stick until the next mode change.
+    // Mode change resets the navigation panel to the mode's default. Properties
+    // stay under Ctrl+J; tool options open the inspector on their own when needed.
     const bool showSidebarPanel = comfortable;
-    const bool showInspector = comfortable;
 
     {
         QAction *toggle = action(QStringLiteral("toggleSidebar"));
@@ -1290,12 +1303,7 @@ void MainWindow::applyLayoutMode(bool force)
         toggle->setChecked(showSidebarPanel);
         m_sidebar->setPanelVisible(showSidebarPanel);
     }
-    {
-        QAction *toggle = action(QStringLiteral("toggleProperties"));
-        const QSignalBlocker blocker(toggle);
-        toggle->setChecked(showInspector);
-        m_inspector->setVisible(showInspector);
-    }
+    updateInspectorVisibility();
 
     clampSplitterSizes();
 }
@@ -1384,6 +1392,8 @@ void MainWindow::connectSessionSignals()
             &MainWindow::updateForCurrentDocument, Qt::UniqueConnection);
     connect(session, &core::DocumentSession::zoomChanged, this,
             &MainWindow::updateForCurrentDocument, Qt::UniqueConnection);
+    connect(session, &core::DocumentSession::toolChanged, this, &MainWindow::syncToolActions,
+            Qt::UniqueConnection);
     connect(session->undoStack(), &QUndoStack::canUndoChanged,
             action(QStringLiteral("undo")), &QAction::setEnabled, Qt::UniqueConnection);
     connect(session->undoStack(), &QUndoStack::canRedoChanged,
@@ -1392,6 +1402,8 @@ void MainWindow::connectSessionSignals()
             &QUndoStack::undo, Qt::UniqueConnection);
     connect(action(QStringLiteral("redo")), &QAction::triggered, session->undoStack(),
             &QUndoStack::redo, Qt::UniqueConnection);
+
+    syncToolActions();
 }
 
 void MainWindow::updateForCurrentDocument()
@@ -2489,16 +2501,96 @@ FindBar *MainWindow::currentFindBar() const
 
 void MainWindow::revealToolOptions()
 {
-    // Picking a tool with settings is the moment those settings matter, so the
-    // inspector opens itself rather than leaving people to find Ctrl+J.
-    if (!m_toolOptions || !m_toolOptions->hasOptions())
+    // Picking a tool with settings opens the tool-options strip without turning
+    // document Properties on — those stay behind Ctrl+J.
+    updateInspectorVisibility();
+}
+
+void MainWindow::updateInspectorVisibility()
+{
+    if (!m_inspector || !m_toolOptions || !m_properties)
         return;
 
-    QAction *toggle = action(QStringLiteral("toggleProperties"));
-    if (toggle && !toggle->isChecked())
-        toggle->setChecked(true);
-    else if (m_inspector)
-        m_inspector->setVisible(true);
+    if (m_tabs->count() == 0) {
+        m_inspector->setVisible(false);
+        return;
+    }
+
+    const bool showProps =
+        action(QStringLiteral("toggleProperties"))
+        && action(QStringLiteral("toggleProperties"))->isChecked();
+    const bool showTools = m_toolOptions->hasOptions();
+    m_toolOptions->setVisible(showTools);
+    m_properties->setVisible(showProps);
+    m_inspector->setVisible(showTools || showProps);
+}
+
+void MainWindow::syncToolActions()
+{
+    auto *session = currentSession();
+    if (!session)
+        return;
+
+    const core::Tool tool = session->tool();
+    const char *id = "toolSelect";
+    switch (tool) {
+    case core::Tool::Hand:
+        id = "toolHand";
+        break;
+    case core::Tool::Highlight:
+        id = "toolHighlight";
+        break;
+    case core::Tool::Underline:
+        id = "toolUnderline";
+        break;
+    case core::Tool::Strikeout:
+        id = "toolStrikeout";
+        break;
+    case core::Tool::Squiggly:
+        id = "toolSquiggly";
+        break;
+    case core::Tool::Draw:
+        id = "toolDraw";
+        break;
+    case core::Tool::Note:
+        id = "toolNote";
+        break;
+    case core::Tool::AddText:
+        id = "addText";
+        break;
+    case core::Tool::Shape:
+        id = "addShape";
+        break;
+    case core::Tool::Ellipse:
+        id = "addEllipse";
+        break;
+    case core::Tool::Line:
+        id = "addLine";
+        break;
+    case core::Tool::Arrow:
+        id = "addArrow";
+        break;
+    case core::Tool::Stamp:
+        id = "toolStamp";
+        break;
+    case core::Tool::Redact:
+        id = "toolRedact";
+        break;
+    case core::Tool::EditText:
+        id = "toolEditText";
+        break;
+    case core::Tool::Select:
+    case core::Tool::EditImage:
+    case core::Tool::AddImage:
+    default:
+        id = "toolSelect";
+        break;
+    }
+
+    if (QAction *entry = action(QString::fromLatin1(id)); entry && entry->isCheckable()) {
+        const QSignalBlocker blocker(entry);
+        entry->setChecked(true);
+    }
 }
 
 // --- Recent files ----------------------------------------------------------

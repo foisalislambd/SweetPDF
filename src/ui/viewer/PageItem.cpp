@@ -272,6 +272,12 @@ void PageItem::paintOverlay(QPainter *painter, const Palette &colors)
             painter->setBrush(Qt::NoBrush);
             painter->drawRect(m_overlay.pendingShape);
             break;
+        case PageOverlay::PendingShape::Line: {
+            painter->setPen(QPen(tool, m_overlay.toolWidth, Qt::SolidLine, Qt::RoundCap));
+            painter->setBrush(Qt::NoBrush);
+            painter->drawLine(m_overlay.pendingLineStart, m_overlay.pendingLineEnd);
+            break;
+        }
         case PageOverlay::PendingShape::None:
             break;
         }

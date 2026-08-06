@@ -26,11 +26,15 @@ enum class Tool {
     Highlight,
     Underline,
     Strikeout,
+    Squiggly,
     Draw,
     Note,
     Redact,
     Shape,
     Ellipse,
+    Line,
+    Arrow,
+    Stamp,
 };
 
 /// How pages are laid out in the viewport.
@@ -118,6 +122,12 @@ public:
     void setMarkupColor(const QColor &color);
     qreal markupOpacity() const noexcept { return m_markupOpacity; }
     void setMarkupOpacity(qreal opacity);
+    qreal markupBorderWidth() const noexcept { return m_markupBorderWidth; }
+    void setMarkupBorderWidth(qreal width);
+    LineEnding lineEndStyle() const noexcept { return m_lineEndStyle; }
+    void setLineEndStyle(LineEnding style);
+    QString stampIconName() const noexcept { return m_stampIconName; }
+    void setStampIconName(const QString &name);
     QString author() const noexcept { return m_author; }
     void setAuthor(const QString &author);
 
@@ -219,6 +229,9 @@ private:
 
     QColor m_markupColor = QColor(0xFF, 0xDD, 0x4A);
     qreal m_markupOpacity = 0.45;
+    qreal m_markupBorderWidth = 1.5;
+    LineEnding m_lineEndStyle = LineEnding::OpenArrow;
+    QString m_stampIconName = QStringLiteral("Draft");
     QString m_author;
     int m_selectedAnnotation = 0;
     int m_selectedAnnotationPage = -1;

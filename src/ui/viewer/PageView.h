@@ -157,6 +157,7 @@ private:
     bool followLinkAt(int pageIndex, const QPointF &pagePoint);
     void createNoteAt(int pageIndex, const QPointF &pagePoint);
     void createTextBoxAt(int pageIndex, const QPointF &pagePoint);
+    void createStampAt(int pageIndex, const QPointF &pagePoint);
 
     void startInlineTextEdit();
     void commitInlineTextEdit();
@@ -203,6 +204,7 @@ private:
     QPolygonF m_currentStroke;
     QPointF m_shapeOrigin;
     QRectF m_pendingShape;
+    QPointF m_lineEnd;
     bool m_drawing = false;
 
     /// A picture or link waiting for the box the user is about to drag.

@@ -148,6 +148,13 @@ private:
     /// Opens the inspector when the tool that was just picked has settings.
     void revealToolOptions();
 
+    /// Shows the inspector when tool options need space and/or Properties is on.
+    void updateInspectorVisibility();
+
+    /// Keeps ribbon tool check-state in sync when the session tool changes
+    /// outside a ribbon click (e.g. Stamp/Note auto-return to Select).
+    void syncToolActions();
+
     QAction *makeAction(const QString &id, const QString &text, const QString &iconName,
                         const QKeySequence &shortcut = QKeySequence());
     QAction *action(const QString &id) const;
