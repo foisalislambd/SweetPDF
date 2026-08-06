@@ -102,6 +102,10 @@ Q_SIGNALS:
     void annotationSelected(int pageIndex, int objectNumber);
     void statusMessage(const QString &message);
 
+    /// Text was selected with the Edit text tool, so the wording under it should
+    /// be replaced. The window owns that command, hence the signal.
+    void textEditRequested();
+
 protected:
     void wheelEvent(QWheelEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;

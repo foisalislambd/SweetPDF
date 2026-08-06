@@ -1042,7 +1042,8 @@ void PageView::mousePressEvent(QMouseEvent *event)
             case core::Tool::Select:
             case core::Tool::Highlight:
             case core::Tool::Underline:
-            case core::Tool::Strikeout: {
+            case core::Tool::Strikeout:
+            case core::Tool::EditText: {
                 if (auto text = textOf(pageIndex)) {
                     m_selectionAnchor = text->indexAt(pagePoint);
                     m_selectingText = true;
@@ -1166,10 +1167,17 @@ void PageView::mouseReleaseEvent(QMouseEvent *event)
         // A markup tool turns the drag straight into an annotation, so the reader
         // does not have to select and then press a button.
         const core::AnnotationType markup = markupTypeFor(m_session->tool());
-        if (markup != core::AnnotationType::Other && hasSelection())
+        if (markup != core::AnnotationType::Other && hasSelection()) {
             markUpSelection(markup);
-        else if (hasSelection())
+        } else if (m_session->tool() == core::Tool::EditText && hasSelection()) {
+            // Same idea for the text tool: the wording to change is whatever was
+            // just dragged over, so the dialog opens on release instead of asking
+            // the reader to select and then find a button.
             Q_EMIT selectionChanged(true);
+            Q_EMIT textEditRequested();
+        } else if (hasSelection()) {
+            Q_EMIT selectionChanged(true);
+        }
 
         event->accept();
         return;

@@ -7,17 +7,21 @@
 ///
 /// Usage: sweetpdf_smoke <document> [screenshot.png] [--dark]
 
+#include "core/pdf/PdfAnnotations.h"
 #include "core/pdf/PdfDocument.h"
 #include "core/session/DocumentSession.h"
 #include "ui/theme/Theme.h"
+#include "ui/viewer/PageView.h"
 #include "ui/window/MainWindow.h"
 
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QImage>
+#include <QMouseEvent>
 #include <QTimer>
 
+#include <algorithm>
 #include <cstdio>
 
 namespace {
@@ -33,6 +37,98 @@ int fail(const char *message)
 {
     std::fprintf(stderr, "smoke: %s\n", message);
     return 1;
+}
+
+void sendMouse(QWidget *target, QEvent::Type type, const QPointF &pos, Qt::MouseButton button,
+               Qt::MouseButtons buttons)
+{
+    QMouseEvent event(type, pos, target->mapToGlobal(pos), button, buttons, Qt::NoModifier);
+    QApplication::sendEvent(target, &event);
+}
+
+/// Draws a short stroke with the pen and reports whether it stuck: an ink
+/// annotation on the page, and a page bitmap that changed because of it.
+bool drawCheck(sweet::ui::MainWindow *window)
+{
+    auto *view = window->findChild<sweet::ui::PageView *>();
+    if (!view)
+        return fail("no page view to draw on") == 0;
+
+    sweet::core::DocumentSession *session = view->session();
+    const int before = sweet::core::annotations::onPage(*session->document(), 0).size();
+
+    session->setTool(sweet::core::Tool::Draw);
+    spin(50);
+
+    QWidget *canvas = view->viewport();
+    // Down the middle of the viewport, where the first page is bound to be.
+    const QPointF start(canvas->width() / 2.0 - 60, canvas->height() / 2.0);
+    sendMouse(canvas, QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
+    for (int step = 1; step <= 6; ++step) {
+        sendMouse(canvas, QEvent::MouseMove, start + QPointF(step * 15, (step % 2) * 20 - 10),
+                  Qt::NoButton, Qt::LeftButton);
+    }
+    sendMouse(canvas, QEvent::MouseButtonRelease, start + QPointF(90, 0), Qt::LeftButton,
+              Qt::NoButton);
+    spin(1500);
+
+    const QList<sweet::core::Annotation> after =
+        sweet::core::annotations::onPage(*session->document(), 0);
+    if (after.size() != before + 1) {
+        std::fprintf(stderr, "smoke: the stroke was not committed (%lld annotations, expected %d)\n",
+                     static_cast<long long>(after.size()), before + 1);
+        return false;
+    }
+
+    const bool isInk = std::any_of(after.cbegin(), after.cend(),
+                                   [](const sweet::core::Annotation &annotation) {
+                                       return annotation.type
+                                           == sweet::core::AnnotationType::Ink;
+                                   });
+    if (!isInk) {
+        std::fprintf(stderr, "smoke: the committed annotation is not ink\n");
+        return false;
+    }
+
+    // And it has to reach the screen. Committing the stroke but serving the
+    // viewer a bitmap cached from before the edit is exactly how this looked when
+    // it was broken: the ink showed under the pointer and disappeared on release.
+    session->setTool(sweet::core::Tool::Select);
+    spin(100);
+    const QImage shown = view->grab().toImage();
+    const QImage expected = session->document()->page(0)->render(1.0);
+    if (shown.isNull() || expected.isNull())
+        return false;
+
+    const QColor ink = session->markupColor();
+    const auto carriesInk = [&ink](const QImage &image) {
+        // The pen colour is unlike anything on a page of black text, so counting
+        // pixels near it is enough to tell a drawn page from a clean one.
+        int matches = 0;
+        for (int y = 0; y < image.height(); y += 2) {
+            for (int x = 0; x < image.width(); x += 2) {
+                const QColor pixel = image.pixelColor(x, y);
+                if (std::abs(pixel.red() - ink.red()) < 60
+                    && std::abs(pixel.green() - ink.green()) < 60
+                    && std::abs(pixel.blue() - ink.blue()) < 60) {
+                    ++matches;
+                }
+            }
+        }
+        return matches > 20;
+    };
+
+    if (!carriesInk(expected)) {
+        std::fprintf(stderr, "smoke: the stroke is not in the rendered page\n");
+        return false;
+    }
+    if (!carriesInk(shown)) {
+        std::fprintf(stderr, "smoke: the stroke is in the document but not on screen\n");
+        return false;
+    }
+
+    std::printf("smoke: the stroke was committed and is on screen\n");
+    return true;
 }
 
 } // namespace
@@ -115,6 +211,13 @@ int main(int argc, char *argv[])
                 window.runHomeTask(toolId);
                 spin(200);
             }
+
+            // Drawing with the pointer is the one thing no other test covers, and
+            // the one users notice first when it breaks: the stroke has to end up
+            // in the document and in the next bitmap of the page, not just in the
+            // preview overlay.
+            if (arguments.contains(QStringLiteral("--draw")) && !drawCheck(&window))
+                status = fail("drawing did not survive the release");
 
             if (!screenshotPath.isEmpty()) {
                 const QPixmap shot = window.grab();

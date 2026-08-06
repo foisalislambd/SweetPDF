@@ -17,6 +17,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QImage>
 #include <QTemporaryDir>
 
 #include <algorithm>
@@ -98,10 +99,23 @@ int main(int argc, char *argv[])
             const int pages = document->pageCount();
             check(pages > 1, "the sample has more than one page");
 
+            // The page is held and rendered before the edit, exactly as the viewer
+            // does. MuPDF binds annotations to the page object at load time, so a
+            // page kept across an edit used to keep rendering the old appearance:
+            // a drawing appeared while the pointer was down and vanished as soon
+            // as the real render replaced the preview.
+            auto heldPage = document->page(0);
+            const QImage before = heldPage->render(1.0);
+            check(!before.isNull(), "the page renders before the edit");
+
             const int highlight = annotations::add(*document, highlightSpec(0));
             const int ink = annotations::add(*document, inkSpec(0));
             check(highlight != 0, "a highlight can be created");
             check(ink != 0, "an ink annotation can be created");
+
+            const QImage after = heldPage->render(1.0);
+            check(!after.isNull(), "the page still renders after the edit");
+            check(after != before, "a new annotation shows up in the very next render");
             checkEqual(annotations::onPage(*document, 0).size(), qsizetype(2),
                        "both annotations are listed");
 

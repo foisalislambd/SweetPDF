@@ -28,6 +28,13 @@ if(GHOSTSCRIPT_EXECUTABLE)
 
     add_test(NAME smoke COMMAND sweetpdf_smoke "${sample_pdf}")
     add_test(NAME editing COMMAND sweetpdf_edit_test "${sample_pdf}")
+
+    # Drawing with the pointer, end to end. Its own test because it is the one
+    # thing that has to work through every layer at once - tool, overlay, undo
+    # command, render cache and repaint - and a break there is invisible to the
+    # other two: the stroke lands in the document either way, it just never
+    # reaches the screen.
+    add_test(NAME drawing COMMAND sweetpdf_smoke "${sample_pdf}" --draw)
 else()
     message(STATUS "Ghostscript not found - the tests have no document and are skipped")
 endif()

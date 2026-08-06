@@ -217,7 +217,7 @@ int DocumentSession::createAnnotation(const AnnotationSpec &spec)
     const int objectNumber = annotations::add(*m_document, spec);
     if (objectNumber != 0) {
         setModified(true);
-        Q_EMIT pageInvalidated(spec.pageIndex);
+        invalidatePage(spec.pageIndex);
         Q_EMIT annotationsChanged(spec.pageIndex);
     }
     return objectNumber;
@@ -233,7 +233,7 @@ bool DocumentSession::deleteAnnotation(int pageIndex, int objectNumber)
         if (m_selectedAnnotation == objectNumber)
             setSelectedAnnotation(-1, 0);
         setModified(true);
-        Q_EMIT pageInvalidated(pageIndex);
+        invalidatePage(pageIndex);
         Q_EMIT annotationsChanged(pageIndex);
     }
     return removed;
@@ -249,7 +249,7 @@ bool DocumentSession::changeAnnotation(int pageIndex, int objectNumber, const QC
         annotations::update(*m_document, pageIndex, objectNumber, color, opacity, contents);
     if (changed) {
         setModified(true);
-        Q_EMIT pageInvalidated(pageIndex);
+        invalidatePage(pageIndex);
         Q_EMIT annotationsChanged(pageIndex);
     }
     return changed;
@@ -317,7 +317,7 @@ bool DocumentSession::writeFormValue(int pageIndex, int objectNumber, const QStr
     const bool written = forms::setValue(*m_document, pageIndex, objectNumber, value);
     if (written) {
         setModified(true);
-        Q_EMIT pageInvalidated(pageIndex);
+        invalidatePage(pageIndex);
         Q_EMIT formsChanged(pageIndex);
     }
     return written;
@@ -379,7 +379,7 @@ void DocumentSession::restoreDocumentBytes(const QByteArray &bytes)
     }
 
     setModified(true);
-    Q_EMIT pageInvalidated(-1);
+    invalidatePage(-1);
 }
 
 QString DocumentSession::filePath() const

@@ -1097,6 +1097,12 @@ bool MainWindow::openFile(const QString &path)
         view->setFocus();
     });
     connect(view, &PageView::statusMessage, this, &MainWindow::report);
+    connect(view, &PageView::textEditRequested, this, [this, view] {
+        // Only for the view the reader is actually looking at: a background tab
+        // must not put a dialog on screen.
+        if (view == currentView())
+            replaceSelectedText();
+    });
 
     const int index = m_tabs->addTab(page, session->displayName());
     m_tabs->setTabToolTip(index, path);

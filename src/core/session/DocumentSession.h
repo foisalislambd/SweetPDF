@@ -167,6 +167,13 @@ public Q_SLOTS:
     void setTool(sweet::core::Tool tool);
     void setLayout(sweet::core::PageLayout layout);
     void setModified(bool modified);
+
+    /// Throws away the rendered bitmaps of `pageIndex`, or of every page when it
+    /// is -1, and tells the views. Call this after anything that changes how a
+    /// page looks. Emitting pageInvalidated on its own is not enough: the views
+    /// drop their copy but the render cache still holds the bitmap from before
+    /// the edit, so the next repaint gets a cache hit and the page comes back
+    /// looking exactly as it did.
     void invalidatePage(int pageIndex);
 
 Q_SIGNALS:
@@ -178,6 +185,7 @@ Q_SIGNALS:
     void toolChanged(sweet::core::Tool tool);
     void layoutChanged(sweet::core::PageLayout layout);
     void modifiedChanged(bool modified);
+    /// Emitted by invalidatePage(), which is the only thing that should emit it.
     void pageInvalidated(int pageIndex);
 
     /// The annotations of `pageIndex` changed, or every page when it is -1.
