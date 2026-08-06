@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=SweetPDF
+GenericName=PDF Editor
+Comment=View, edit, annotate and organise PDF documents
+Exec=sweetpdf %F
+Icon=org.sweetpdf.SweetPDF
+Terminal=false
+Categories=Office;Viewer;Graphics;
+MimeType=application/pdf;application/x-pdf;application/oxps;application/epub+zip;application/vnd.comicbook+zip;
+Keywords=PDF;editor;annotate;OCR;merge;split;
+StartupWMClass=sweetpdf
+StartupNotify=true

@@ -1,0 +1,7 @@
+#pragma once
+
+#include <QLoggingCategory>
+
+Q_DECLARE_LOGGING_CATEGORY(lcPdf)
+Q_DECLARE_LOGGING_CATEGORY(lcRender)
+Q_DECLARE_LOGGING_CATEGORY(lcUi)
