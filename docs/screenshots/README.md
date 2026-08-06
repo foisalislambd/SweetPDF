@@ -4,8 +4,8 @@ Images used in the root README. Keep them current when the chrome changes.
 
 | File | Contents |
 | --- | --- |
-| `viewer-light.png` | Editor (README hero), light, Highlight tool |
-| `viewer-dark.png` | Editor, dark (shown under *The window*) |
+| `viewer-dark.png` | Editor (README hero), dark, Highlight tool |
+| `viewer-light.png` | Editor, light (shown under *The window*) |
 | `home.png` | Welcome screen, light (optional / docs only) |
 | `home-dark.png` | Welcome screen, dark (optional / docs only) |
 
