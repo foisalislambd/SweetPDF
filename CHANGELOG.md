@@ -42,8 +42,10 @@ Everything below is in `main` and will go out with the first tagged release.
   guide. The ribbon and side panels are hidden while no document is open.
 - **Undo** — every edit is one step on the undo stack, including page
   operations, which are undone by restoring the document as it was.
-- **Packaging and CI** — `.deb` and `.tar.gz` for Linux and a portable `.zip`
-  for Windows, built and released automatically once every platform passes.
+- **Packaging and CI** — `.deb` and `.tar.gz` for Linux, an installer and a
+  portable `.zip` for Windows, built and released automatically once every
+  platform passes. Linux packages carry a desktop entry, AppStream metadata and
+  the icon at every size the theme spec lists.
 
 ### Known limitations
 

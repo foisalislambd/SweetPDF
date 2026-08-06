@@ -1,8 +1,12 @@
 # Packaging.cmake
 #
 # Turns an install tree into the archives the release workflow uploads. Linux
-# gets a .deb (dependencies resolved by dpkg-shlibdeps) plus a .tar.gz; Windows
-# gets a .zip that the CI job first fills with Qt and the third-party DLLs.
+# gets a .deb (dependencies resolved by dpkg-shlibdeps) plus a .tar.gz.
+#
+# Windows releases do not come from here: the shipped artifact is an installer
+# built by packaging/windows/sweetpdf.nsi, because it has to package the folder
+# windeployqt has already filled with Qt and the third-party DLLs rather than the
+# bare install tree. The ZIP generator below stays for local use.
 
 set(CPACK_PACKAGE_NAME "sweetpdf")
 set(CPACK_PACKAGE_VENDOR "SweetPDF")
@@ -36,6 +40,13 @@ else()
     set(CPACK_DEBIAN_PACKAGE_SECTION "graphics")
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
     set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+
+    # Refresh the desktop and icon caches, so the menu entry appears on install
+    # rather than at the next login.
+    set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
+        "${CMAKE_SOURCE_DIR}/packaging/debian/postinst"
+        "${CMAKE_SOURCE_DIR}/packaging/debian/postrm"
+    )
 endif()
 
 unset(_arch)

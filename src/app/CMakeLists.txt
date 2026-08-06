@@ -1,5 +1,17 @@
+set(sweetpdf_sources main.cpp)
+
+if(WIN32)
+    # The icon and the version block are compiled into the executable, so Explorer,
+    # the taskbar and the installer's shortcut all show the real artwork.
+    set(SWEETPDF_ICON_PATH "${CMAKE_SOURCE_DIR}/resources/icons/sweetpdf.ico")
+    # VERSIONINFO wants four comma-separated numbers, not "1.0.0".
+    set(SWEETPDF_VERSION_COMMA "${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
+    configure_file(sweetpdf.rc.in "${CMAKE_CURRENT_BINARY_DIR}/sweetpdf.rc" @ONLY)
+    list(APPEND sweetpdf_sources "${CMAKE_CURRENT_BINARY_DIR}/sweetpdf.rc")
+endif()
+
 qt_add_executable(sweetpdf
-    main.cpp
+    ${sweetpdf_sources}
 )
 
 set_target_properties(sweetpdf PROPERTIES
@@ -39,6 +51,13 @@ else()
     )
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/org.sweetpdf.SweetPDF.metainfo.xml"
             DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo")
-    install(FILES "${CMAKE_SOURCE_DIR}/resources/icons/org.sweetpdf.SweetPDF.png"
-            DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/512x512/apps")
+    # One 512px icon would leave panels and menus to downscale it themselves, which
+    # looks soft at 16 and 24 pixels, so every size the theme spec lists is shipped.
+    foreach(size 16 22 24 32 48 64 128 256 512)
+        install(
+            FILES "${CMAKE_SOURCE_DIR}/resources/icons/hicolor/${size}x${size}.png"
+            DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${size}x${size}/apps"
+            RENAME "org.sweetpdf.SweetPDF.png"
+        )
+    endforeach()
 endif()

@@ -78,13 +78,13 @@ jobs:
         with:
           msystem: MINGW64
           update: true
-          # zip builds the release archive; ghostscript renders the test
-          # document, without it the test suite has nothing to open.
           install: >-
             zip
-          # gdb is only used to turn a crashing test into a backtrace.
+          # ghostscript renders the test document, without it the test suite has
+          # nothing to open; nsis builds the installer; gdb is only used to turn a
+          # crashing test into a backtrace.
           pacboy: >-
-            toolchain:p cmake:p ninja:p pkgconf:p gdb:p
+            toolchain:p cmake:p ninja:p pkgconf:p gdb:p nsis:p
             qt6-base:p qt6-svg:p qt6-tools:p
             libmupdf:p sqlite3:p tesseract-ocr:p ghostscript:p
 
@@ -126,11 +126,14 @@ jobs:
 
       # windeployqt brings Qt and its plugins, but not MuPDF, Tesseract or the
       # compiler runtime, so those are walked out of the import tables by hand.
+      # The finished folder becomes both artifacts: the portable zip is that folder,
+      # and the installer packages it.
       - name: Package for Windows
         if: inputs.package && runner.os == 'Windows'
         run: |
           set -euo pipefail
           stage="dist/SweetPDF"
+          rm -rf dist
           cmake --install build --prefix "$stage"
           # MSYS2 names the tool after the Qt major version; plain Windows Qt
           # builds do not.
@@ -138,8 +141,33 @@ jobs:
           "$deploy" --release --no-translations --no-system-d3d-compiler \
             --no-opengl-sw "$stage/sweetpdf.exe"
           ./scripts/copy-mingw-dlls.sh "$stage"
+
+          # Refuse to ship a folder the deploy step left incomplete: an installer
+          # that produces an unstartable program is worse than a failed build.
+          for required in sweetpdf.exe Qt6Core.dll Qt6Widgets.dll; do
+            test -f "$stage/$required" || { echo "::error::$required missing from $stage"; exit 1; }
+          done
+          test -d "$stage/platforms" || { echo "::error::no Qt platform plugins in $stage"; exit 1; }
+
           mkdir -p build
-          (cd dist && zip -r -q "../build/sweetpdf-${{ inputs.version }}-windows-${{ matrix.arch }}.zip" SweetPDF)
+          base="sweetpdf-${{ inputs.version }}-windows-${{ matrix.arch }}"
+
+          # The portable archive is the same folder, for people who cannot or would
+          # rather not run an installer.
+          (cd dist && zip -r -q "../build/$base.zip" SweetPDF)
+
+          setup="build/$base-setup.exe"
+          # Absolute Windows paths throughout: makensis resolves a relative one
+          # differently depending on the command it appears in.
+          makensis -V3 \
+            -DVERSION="${{ inputs.version }}" \
+            -DARCH="${{ matrix.arch }}" \
+            -DSTAGE="$(cygpath -w "$PWD/$stage")" \
+            -DOUTFILE="$(cygpath -w "$PWD/$setup")" \
+            -DICON="$(cygpath -w "$PWD/resources/icons/sweetpdf.ico")" \
+            -DLICENSEFILE="$(cygpath -w "$PWD/LICENSE")" \
+            packaging/windows/sweetpdf.nsi
+          ls -lh "build/$base.zip" "$setup"
 
       - name: Upload the packages
         if: inputs.package
@@ -150,5 +178,6 @@ jobs:
             build/*.deb
             build/*.tar.gz
             build/*.zip
+            build/*-setup.exe
           if-no-files-found: error
           retention-days: 7

@@ -39,12 +39,14 @@ page](https://github.com/foisalislambd/sweetPDF/releases). Every release lists a
 | ------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Ubuntu 26.04+, Debian 14+ | `sweetpdf_<version>_amd64.deb`           | `sudo apt install ./sweetpdf_*.deb`                                                                  |
 | Other Linux               | `sweetpdf-<version>-linux-x86_64.tar.gz` | Unpack it and run `bin/sweetpdf`. Needs Qt 6.4+, MuPDF and Tesseract from your distribution.         |
-| Windows 10/11             | `sweetpdf-<version>-windows-x86_64.zip`  | Unpack anywhere and run `sweetpdf.exe`. Nothing is installed, so the folder can live on a USB stick. |
+| Windows 10/11             | `sweetpdf-<version>-windows-x86_64-setup.exe` | Run it. Installs into `Program Files` with a Start menu entry, and can offer SweetPDF in the *Open with* menu for PDFs. Uninstall from *Apps & features*. |
+| Windows, portable         | `sweetpdf-<version>-windows-x86_64.zip`  | Unpack anywhere and run `sweetpdf.exe`. Nothing is installed and nothing is written to the registry, so the folder can live on a USB stick. |
 | macOS                     | —                                        | Not built yet, see [Releases and CI](#releases-and-ci). Build from source in the meantime.           |
 
 
 There is no telemetry and no auto-updater. To upgrade, install the newer package
-over the old one, or replace the unpacked folder.
+over the old one; on Windows the installer removes the previous version first, so
+no files from an older build are left behind.
 
 ## First five minutes
 
@@ -426,10 +428,23 @@ Versions come from `scripts/next-version.sh`: the first release is `1.0.0` and
 every component stops at nine, so `1.0.9` is followed by `1.1.0` and `1.9.9` by
 `2.0.0`. Run the script locally to see what the next release would be.
 
-Each release carries a `.deb` and a `.tar.gz` for Linux, a portable `.zip` for
-Windows, and a `SHA256SUMS` file. macOS is not built: it needs the `macos-*`
-runners, so the matrix in `build.yml` has a commented entry to enable when you
-want `.dmg` builds.
+Each release carries a `.deb` and a `.tar.gz` for Linux, a `-setup.exe` installer
+and a portable `.zip` for Windows, and a `SHA256SUMS` file. macOS is not built: it
+needs the `macos-*` runners, so the matrix in `build.yml` has a commented entry to
+enable when you want `.dmg` builds.
+
+Both Windows artifacts come from the same staged folder, the one `windeployqt` and
+`scripts/copy-mingw-dlls.sh` fill with Qt, MuPDF, Tesseract and the compiler
+runtime. The zip is that folder as-is; the installer is built from it by
+`packaging/windows/sweetpdf.nsi` rather than by CPack, since CPack would only see
+the bare install tree. The installer writes the usual *Apps & features* entry,
+removes any previous version first, and registers PDFs through `OpenWithProgids` —
+Windows 10 and later only let the user choose the default handler, so an installer
+that claims it outright would be overridden anyway.
+
+On Linux the package installs a `.desktop` entry, AppStream metadata for software
+centres, and the application icon at nine sizes; the `.deb` refreshes the desktop
+and icon caches on install so the menu entry appears immediately.
 
 ## Roadmap
 

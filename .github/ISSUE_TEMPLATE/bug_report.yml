@@ -60,7 +60,8 @@ body:
       options:
         - Linux .deb package
         - Linux .tar.gz archive
-        - Windows .zip archive
+        - Windows installer (setup.exe)
+        - Windows portable .zip
         - Built from source
         - Other
     validations:
