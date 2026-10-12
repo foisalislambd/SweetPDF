@@ -33,12 +33,14 @@ sudo dnf install gcc-c++ cmake ninja-build qt6-qtbase-devel qt6-qtsvg-devel \
   mupdf-devel tesseract-devel leptonica-devel sqlite-devel ghostscript
 ```
 
-## Windows (MSYS2 MINGW64)
+## Windows (MSYS2 UCRT64)
+
+Open the UCRT64 shell. MINGW64 no longer ships MuPDF.
 
 ```bash
 pacman -S --needed \
-  mingw-w64-x86_64-{toolchain,cmake,ninja,qt6-base,qt6-svg,qt6-tools} \
-  mingw-w64-x86_64-{libmupdf,sqlite3,tesseract-ocr,tesseract-data-eng,ghostscript}
+  mingw-w64-ucrt-x86_64-{toolchain,cmake,ninja,qt6-base,qt6-svg,qt6-tools} \
+  mingw-w64-ucrt-x86_64-{libmupdf,sqlite3,tesseract-ocr,tesseract-data-eng,ghostscript}
 
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build

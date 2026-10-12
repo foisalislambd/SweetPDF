@@ -12,7 +12,9 @@
 set -euo pipefail
 
 target="${1:?usage: copy-mingw-dlls.sh <folder-with-binaries>}"
-mingw_bin="${MINGW_PREFIX:-/mingw64}/bin"
+# UCRT64 sets MINGW_PREFIX to /ucrt64. The fallback covers a shell that
+# forgot to export it.
+mingw_bin="${MINGW_PREFIX:-/ucrt64}/bin"
 
 declare -A seen=()
 queue=()

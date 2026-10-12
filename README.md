@@ -287,11 +287,11 @@ sudo dnf install gcc-c++ cmake ninja-build qt6-qtbase-devel qt6-qtsvg-devel \
 
 
 
-### Windows (MSYS2)
+### Windows (MSYS2 UCRT64)
 
 ```bash
-pacman -S --needed mingw-w64-x86_64-{toolchain,cmake,ninja,qt6-base,qt6-svg,qt6-tools} \
-                   mingw-w64-x86_64-{libmupdf,sqlite3,tesseract-ocr}
+pacman -S --needed mingw-w64-ucrt-x86_64-{toolchain,cmake,ninja,qt6-base,qt6-svg,qt6-tools} \
+                   mingw-w64-ucrt-x86_64-{libmupdf,sqlite3,tesseract-ocr}
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
