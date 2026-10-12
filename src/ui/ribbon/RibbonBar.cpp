@@ -20,9 +20,9 @@
 namespace sweet::ui {
 namespace {
 
-constexpr int largeIconSize = 18;
-constexpr int compactIconSize = 15;
-constexpr int largeCellWidth = 52;
+constexpr int largeIconSize = 22;
+constexpr int compactIconSize = 16;
+constexpr int largeCellWidth = 58;
 // Three compact rows match one large cell. A taller column stretches every
 // ribbon tab, which leaves empty bands above and below the shorter ones.
 constexpr int compactRows = 3;
@@ -49,12 +49,12 @@ QToolButton *makeButton(QAction *action, bool large)
         button->setIconSize(QSize(largeIconSize, largeIconSize));
         const int textWidth = button->fontMetrics().horizontalAdvance(caption);
         button->setMinimumWidth(qMax(largeCellWidth, textWidth + 8));
-        button->setFixedHeight(46);
+        button->setFixedHeight(52);
         button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     } else {
         button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         button->setIconSize(QSize(compactIconSize, compactIconSize));
-        button->setFixedHeight(22);
+        button->setFixedHeight(26);
         button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     }
 

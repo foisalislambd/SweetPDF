@@ -123,8 +123,8 @@ QString applyTokens(QString sheet, const Palette &p, const QString &fontFamily, 
         { QStringLiteral("pressed"), p.pressed.name() },
         { QStringLiteral("fontFamily"), fontFamily },
         { QStringLiteral("fontBody"), QString::number(basePoint, 'f', 1) },
-        { QStringLiteral("fontSmall"), QString::number(basePoint - 0.5, 'f', 1) },
-        { QStringLiteral("fontCaption"), QString::number(basePoint - 1.5, 'f', 1) },
+        { QStringLiteral("fontSmall"), QString::number(basePoint, 'f', 1) },
+        { QStringLiteral("fontCaption"), QString::number(qMax(9.0, basePoint - 1.0), 'f', 1) },
     };
 
     for (auto it = tokens.cbegin(); it != tokens.cend(); ++it)
@@ -237,13 +237,13 @@ QFont Theme::font(TextRole role) const
     case TextRole::Body:
         break;
     case TextRole::Small:
-        result.setPointSizeF(m_basePointSize - 0.5);
+        result.setPointSizeF(m_basePointSize);
         break;
     case TextRole::Caption:
-        result.setPointSizeF(m_basePointSize - 1.5);
+        result.setPointSizeF(qMax(9.0, m_basePointSize - 1.0));
         break;
     case TextRole::SectionLabel:
-        result.setPointSizeF(m_basePointSize - 1.5);
+        result.setPointSizeF(qMax(9.0, m_basePointSize - 1.0));
         result.setWeight(QFont::DemiBold);
         result.setCapitalization(QFont::AllUppercase);
         result.setLetterSpacing(QFont::PercentageSpacing, 106);
@@ -352,7 +352,7 @@ QMenu::right-arrow { width: 12px; height: 12px; }
 #RibbonGroupSeparator { background: {borderStrong}; }
 #RibbonGroupTitle {
     color: {textMuted};
-    font-size: {fontCaption}pt;
+    font-size: {fontSmall}pt;
     font-weight: 600;
     letter-spacing: 0.2px;
     padding: 0 2px;
@@ -366,7 +366,7 @@ QPushButton#RibbonTab {
     border-radius: 0;
     padding: 4px 12px 3px 12px;
     color: {textMuted};
-    font-size: {fontSmall}pt;
+    font-size: {fontBody}pt;
     font-weight: 500;
 }
 QPushButton#RibbonTab:hover {
@@ -391,7 +391,7 @@ QToolButton::menu-indicator { image: none; }
 QToolButton#RibbonAction {
     padding: 0 4px;
     color: {text};
-    font-size: {fontSmall}pt;
+    font-size: {fontBody}pt;
     font-weight: 500;
     border-radius: 4px;
 }
@@ -550,8 +550,8 @@ QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 /* --- Status bar and floating surfaces ---------------------------------- */
 QStatusBar { background: {window}; border-top: 1px solid {border}; padding: 0; }
 QStatusBar::item { border: none; }
-QStatusBar QLabel { color: {textMuted}; font-size: {fontCaption}pt; }
-#StatusValue { color: {text}; font-size: {fontCaption}pt; font-weight: 600; }
+QStatusBar QLabel { color: {textMuted}; font-size: {fontSmall}pt; }
+#StatusValue { color: {text}; font-size: {fontBody}pt; font-weight: 600; }
 
 #FloatingBar {
     background: {surface}; border: 1px solid {border}; border-radius: 13px;

@@ -18,7 +18,7 @@
 namespace sweet::ui {
 namespace {
 
-constexpr int railWidth = 40;
+constexpr int railWidth = 46;
 
 } // namespace
 
@@ -129,8 +129,8 @@ void Sidebar::addRailButton(Panel panel, const QString &iconName, const QString 
     // Acrobat-style nav: icon only; the panel header and tooltip carry the name.
     button->setToolButtonStyle(Qt::ToolButtonIconOnly);
     button->setIcon(icon(iconName));
-    button->setIconSize(QSize(18, 18));
-    button->setFixedSize(railWidth - 4, 32);
+    button->setIconSize(QSize(22, 22));
+    button->setFixedSize(railWidth - 6, 36);
     button->setToolTip(label);
     button->setAccessibleName(label);
     button->setFocusPolicy(Qt::TabFocus);

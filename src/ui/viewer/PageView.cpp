@@ -27,7 +27,7 @@ namespace sweet::ui {
 namespace {
 
 constexpr qreal pageGap = 20.0; ///< Vertical space between pages, in points.
-constexpr qreal pageMargin = 28.0;
+constexpr qreal pageMargin = 12.0;
 constexpr qreal zoomStep = 1.2;
 constexpr int scrollAnimationMs = 220;
 
