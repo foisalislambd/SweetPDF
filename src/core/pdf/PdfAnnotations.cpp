@@ -383,6 +383,12 @@ int add(PdfDocument &document, const AnnotationSpec &spec)
             if (!spec.author.isEmpty())
                 pdf_set_annot_author(ctx, annot, spec.author.toUtf8().constData());
 
+            if (spec.inReplyTo > 0) {
+                pdf_obj *parent = pdf_new_indirect(ctx, document.pdfHandle(), spec.inReplyTo, 0);
+                pdf_dict_put_drop(ctx, pdf_annot_obj(ctx, annot), PDF_NAME(IRT), parent);
+                pdf_dict_put(ctx, pdf_annot_obj(ctx, annot), PDF_NAME(RT), PDF_NAME(R));
+            }
+
             const int64_t now = QDateTime::currentSecsSinceEpoch();
             pdf_set_annot_creation_date(ctx, annot, now);
             pdf_set_annot_modification_date(ctx, annot, now);

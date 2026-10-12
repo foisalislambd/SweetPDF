@@ -53,6 +53,25 @@ bool DocumentSession::load(const QString &path, const QString &password, QString
     return true;
 }
 
+void DocumentSession::takeDocument(std::shared_ptr<PdfDocument> document, const QString &path)
+{
+    adoptDocument(std::move(document), path, true);
+    if (path.isEmpty())
+        setModified(true);
+}
+
+bool DocumentSession::convertToGrayscale(QString *errorMessage)
+{
+    if (!m_document || !m_document->isPdf()) {
+        if (errorMessage)
+            *errorMessage = tr("Only PDF files can be converted to grayscale.");
+        return false;
+    }
+    return applyStructuralEdit(tr("Grayscale"),
+                               [](PdfDocument &document) { document.convertToGrayscale(); },
+                               errorMessage);
+}
+
 void DocumentSession::adoptDocument(std::shared_ptr<PdfDocument> document, const QString &path,
                                     bool resetHistory)
 {
@@ -198,15 +217,12 @@ bool DocumentSession::setDocumentInfo(const DocumentInfo &info, QString *errorMe
     }
 
     try {
-        m_document->setInfo(info);
+        m_undoStack->push(new SetInfoCommand(this, current, info, tr("Edit description")));
     } catch (const MuError &failure) {
         if (errorMessage)
             *errorMessage = failure.details();
         return false;
     }
-
-    setModified(true);
-    Q_EMIT documentChanged();
     return true;
 }
 
@@ -246,6 +262,37 @@ void DocumentSession::setMarkupBorderWidth(qreal width)
     Q_EMIT markupStyleChanged();
 }
 
+void DocumentSession::setMarkupFill(const QColor &color)
+{
+    if (color == m_markupFill)
+        return;
+    m_markupFill = color;
+    Q_EMIT markupStyleChanged();
+}
+
+void DocumentSession::setMarkupFontSize(qreal points)
+{
+    const qreal clamped = qBound(6.0, points, 72.0);
+    if (qFuzzyCompare(clamped, m_markupFontSize))
+        return;
+    m_markupFontSize = clamped;
+    Q_EMIT markupStyleChanged();
+}
+
+void DocumentSession::setCustomStamp(const QImage &image)
+{
+    m_customStamp = image;
+    Q_EMIT markupStyleChanged();
+}
+
+void DocumentSession::setNightMode(bool on)
+{
+    if (on == m_nightMode)
+        return;
+    m_nightMode = on;
+    Q_EMIT nightModeChanged(m_nightMode);
+}
+
 void DocumentSession::setLineEndStyle(LineEnding style)
 {
     if (style == m_lineEndStyle)
@@ -256,8 +303,13 @@ void DocumentSession::setLineEndStyle(LineEnding style)
 
 void DocumentSession::setStampIconName(const QString &name)
 {
-    if (name.isEmpty() || name == m_stampIconName)
+    const bool hadImage = !m_customStamp.isNull();
+    m_customStamp = QImage();
+    if (name.isEmpty() || name == m_stampIconName) {
+        if (hadImage)
+            Q_EMIT markupStyleChanged();
         return;
+    }
     m_stampIconName = name;
     Q_EMIT markupStyleChanged();
 }
@@ -313,22 +365,70 @@ bool DocumentSession::changeAnnotation(int pageIndex, int objectNumber, const QC
     return changed;
 }
 
+bool DocumentSession::applyDocumentInfo(const DocumentInfo &info)
+{
+    if (!m_document || !m_document->isPdf())
+        return false;
+    m_document->setInfo(info);
+    setModified(true);
+    Q_EMIT documentChanged();
+    return true;
+}
+
+bool DocumentSession::applyAnnotationRect(int pageIndex, int objectNumber, const QRectF &rect)
+{
+    if (!m_document)
+        return false;
+    const bool changed = annotations::setRect(*m_document, pageIndex, objectNumber, rect);
+    if (changed) {
+        setModified(true);
+        invalidatePage(pageIndex);
+        Q_EMIT annotationsChanged(pageIndex);
+    }
+    return changed;
+}
+
+bool DocumentSession::setAnnotationRect(int pageIndex, int objectNumber, const QRectF &rect)
+{
+    if (!m_document || !m_document->isPdf() || objectNumber == 0 || rect.isEmpty())
+        return false;
+
+    QRectF before;
+    for (const Annotation &annotation : annotationsOnPage(pageIndex)) {
+        if (annotation.objectNumber == objectNumber) {
+            before = annotation.rect;
+            break;
+        }
+    }
+    if (before.isNull() || before == rect)
+        return false;
+
+    m_undoStack->push(new MoveAnnotationCommand(this, pageIndex, objectNumber, before, rect,
+                                                tr("Move annotation")));
+    return true;
+}
+
 // --- Pictures, signatures and links ----------------------------------------
 
 bool DocumentSession::addImage(int pageIndex, const QImage &image, const QRectF &rect,
-                               const QString &commandText)
+                               const QString &commandText, QString *errorMessage)
 {
-    if (!m_document || !m_document->isPdf() || image.isNull() || rect.isEmpty())
+    if (!m_document || !m_document->isPdf() || image.isNull() || rect.isEmpty()) {
+        if (errorMessage)
+            *errorMessage = tr("Could not place the image on the page.");
         return false;
+    }
 
     // A picture is a stamp annotation, but its pixels are not something an
     // AnnotationSpec can carry, so undo goes through a document snapshot.
     const QString text = commandText.isEmpty() ? tr("Add image") : commandText;
-    QString error;
     return applyStructuralEdit(
         text,
-        [&](PdfDocument &document) { content::addImage(document, pageIndex, image, rect); },
-        &error);
+        [&](PdfDocument &document) {
+            if (content::addImage(document, pageIndex, image, rect) == 0)
+                throw MuError(tr("Could not place the image on the page."));
+        },
+        errorMessage);
 }
 
 bool DocumentSession::addLink(int pageIndex, const QRectF &rect, const QString &uri)
@@ -340,6 +440,47 @@ bool DocumentSession::addLink(int pageIndex, const QRectF &rect, const QString &
     return applyStructuralEdit(
         tr("Add link"),
         [&](PdfDocument &document) { content::addLink(document, pageIndex, rect, uri); }, &error);
+}
+
+bool DocumentSession::removeLinkAt(int pageIndex, const QPointF &at)
+{
+    if (!m_document || !m_document->isPdf())
+        return false;
+
+    QString error;
+    return applyStructuralEdit(
+        tr("Remove link"),
+        [&](PdfDocument &document) { content::removeLinkAt(document, pageIndex, at); }, &error);
+}
+
+bool DocumentSession::addFormField(int pageIndex, forms::NewFieldKind kind, const QString &name,
+                                   const QRectF &rect, const QStringList &choices)
+{
+    if (!m_document || !m_document->isPdf())
+        return false;
+
+    QString error;
+    const bool added = applyStructuralEdit(
+        tr("Add form field"),
+        [&](PdfDocument &document) {
+            forms::createField(document, pageIndex, kind, name, rect, choices);
+        },
+        &error);
+    if (added)
+        Q_EMIT formsChanged(pageIndex);
+    return added;
+}
+
+bool DocumentSession::cropPage(int pageIndex, qreal left, qreal top, qreal right, qreal bottom,
+                               QString *errorMessage)
+{
+    if (!m_document || !m_document->isPdf())
+        return false;
+
+    return applyStructuralEdit(
+        tr("Crop page"),
+        [=](PdfDocument &document) { document.cropPage(pageIndex, left, top, right, bottom); },
+        errorMessage);
 }
 
 // --- Forms -----------------------------------------------------------------

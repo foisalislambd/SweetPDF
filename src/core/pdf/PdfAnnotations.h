@@ -92,6 +92,8 @@ struct AnnotationSpec
     QString contents;
     QString author;
     QString iconName;               ///< Stamp icon name (Draft, Approved, …).
+    /// Object number of the annotation this one replies to. 0 for a new comment.
+    int inReplyTo = 0;
 };
 
 /// Reads and writes the annotations of one document.

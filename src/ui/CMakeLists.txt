@@ -20,6 +20,8 @@ qt_add_library(sweetpdf_ui STATIC
     dialogs/SecurityDialog.h      dialogs/SecurityDialog.cpp
     dialogs/ExportImagesDialog.h  dialogs/ExportImagesDialog.cpp
     dialogs/WatermarkDialog.h     dialogs/WatermarkDialog.cpp
+    dialogs/HeaderFooterDialog.h  dialogs/HeaderFooterDialog.cpp
+    dialogs/CompareDialog.h       dialogs/CompareDialog.cpp
     dialogs/OcrDialog.h           dialogs/OcrDialog.cpp
     dialogs/SignatureDialog.h     dialogs/SignatureDialog.cpp
     dialogs/PreferencesDialog.h   dialogs/PreferencesDialog.cpp

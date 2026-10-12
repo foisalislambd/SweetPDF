@@ -8,7 +8,9 @@
 #include <QButtonGroup>
 #include <QColorDialog>
 #include <QFileInfo>
+#include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -111,15 +113,6 @@ QString pointsLabel(const QSizeF &points)
         return QStringLiteral("—");
     return QStringLiteral("%1 × %2 pt")
         .arg(QString::number(points.width(), 'f', 1), QString::number(points.height(), 'f', 1));
-}
-
-QString geometryLabel(const QRectF &rect)
-{
-    if (rect.isNull())
-        return QStringLiteral("—");
-    return QStringLiteral("X %1   Y %2\nW %3   H %4 pt")
-        .arg(QString::number(rect.x(), 'f', 1), QString::number(rect.y(), 'f', 1),
-             QString::number(rect.width(), 'f', 1), QString::number(rect.height(), 'f', 1));
 }
 
 void setPermission(QLabel *label, bool allowed)
@@ -405,7 +398,51 @@ PropertiesPanel::PropertiesPanel(QWidget *parent)
     auto *borderForm = makeForm();
     selColumn->addLayout(borderForm);
     m_selBorder = addValue(borderForm, m_selectionBody, tr("Border"));
-    m_selGeometry = addValue(borderForm, m_selectionBody, tr("Position"));
+
+    auto *placeCaption = new QLabel(tr("POSITION (PT)"), m_selectionBody);
+    placeCaption->setObjectName(QStringLiteral("SectionLabel"));
+    selColumn->addWidget(placeCaption);
+    auto *place = new QGridLayout;
+    place->setHorizontalSpacing(8);
+    place->setVerticalSpacing(4);
+    const auto spin = [this](QDoubleSpinBox **target) {
+        auto *box = new QDoubleSpinBox(m_selectionBody);
+        box->setRange(-2000, 20000);
+        box->setDecimals(1);
+        box->setSuffix(QStringLiteral(" pt"));
+        *target = box;
+        return box;
+    };
+    auto *xCaption = new QLabel(tr("X"), m_selectionBody);
+    xCaption->setObjectName(QStringLiteral("FieldCaption"));
+    auto *yCaption = new QLabel(tr("Y"), m_selectionBody);
+    yCaption->setObjectName(QStringLiteral("FieldCaption"));
+    auto *wCaption = new QLabel(tr("W"), m_selectionBody);
+    wCaption->setObjectName(QStringLiteral("FieldCaption"));
+    auto *hCaption = new QLabel(tr("H"), m_selectionBody);
+    hCaption->setObjectName(QStringLiteral("FieldCaption"));
+    place->addWidget(xCaption, 0, 0);
+    place->addWidget(spin(&m_selX), 0, 1);
+    place->addWidget(yCaption, 0, 2);
+    place->addWidget(spin(&m_selY), 0, 3);
+    place->addWidget(wCaption, 1, 0);
+    place->addWidget(spin(&m_selW), 1, 1);
+    place->addWidget(hCaption, 1, 2);
+    place->addWidget(spin(&m_selH), 1, 3);
+    selColumn->addLayout(place);
+    const auto commitBox = [this] {
+        if (!m_session || m_writing || m_selX->hasFocus() || m_selY->hasFocus() || m_selW->hasFocus()
+            || m_selH->hasFocus()) {
+            return;
+        }
+        const QRectF rect(m_selX->value(), m_selY->value(), m_selW->value(), m_selH->value());
+        if (rect.width() < 1 || rect.height() < 1)
+            return;
+        m_session->setAnnotationRect(m_session->selectedAnnotationPage(),
+                                     m_session->selectedAnnotation(), rect);
+    };
+    for (QDoubleSpinBox *box : { m_selX, m_selY, m_selW, m_selH })
+        connect(box, &QDoubleSpinBox::editingFinished, this, commitBox);
 
     selColumn->addWidget(sectionLabel(tr("Note"), m_selectionBody));
     m_selContents = new QPlainTextEdit(m_selectionBody);
@@ -413,6 +450,19 @@ PropertiesPanel::PropertiesPanel(QWidget *parent)
     m_selContents->setFixedHeight(88);
     m_selContents->installEventFilter(this);
     selColumn->addWidget(m_selContents);
+
+    m_selReply = new QPushButton(tr("Reply"), m_selectionBody);
+    m_selReply->setIcon(icon(QStringLiteral("comment")));
+    connect(m_selReply, &QPushButton::clicked, this,
+            [this] { Q_EMIT commandRequested(QStringLiteral("replyAnnotation")); });
+    selColumn->addWidget(m_selReply);
+
+    auto *duplicate = new QPushButton(tr("Duplicate"), m_selectionBody);
+    duplicate->setIcon(icon(QStringLiteral("duplicate")));
+    duplicate->setProperty("sweetToolIcon", QStringLiteral("duplicate"));
+    connect(duplicate, &QPushButton::clicked, this,
+            [this] { Q_EMIT commandRequested(QStringLiteral("duplicateSelection")); });
+    selColumn->addWidget(duplicate);
 
     m_selDelete = new QPushButton(tr("Delete selection"), m_selectionBody);
     m_selDelete->setIcon(icon(QStringLiteral("trash")));
@@ -430,6 +480,12 @@ PropertiesPanel::PropertiesPanel(QWidget *parent)
 
     connect(&Theme::instance(), &Theme::changed, this, [this] {
         m_selDelete->setIcon(icon(QStringLiteral("trash")));
+        m_selReply->setIcon(icon(QStringLiteral("comment")));
+        for (QPushButton *button : findChildren<QPushButton *>()) {
+            const QString name = button->property("sweetToolIcon").toString();
+            if (!name.isEmpty())
+                button->setIcon(icon(name));
+        }
         refresh();
     });
 
@@ -647,7 +703,23 @@ void PropertiesPanel::refresh()
         detail = tr("Line");
     setValue(m_selExtra, detail);
     setValue(m_selBorder, tr("%1 pt").arg(selected.borderWidth, 0, 'f', 1));
-    setValue(m_selGeometry, geometryLabel(selected.rect));
+    if (!m_selX->hasFocus() && !m_selY->hasFocus() && !m_selW->hasFocus() && !m_selH->hasFocus()) {
+        const QSignalBlocker blockX(m_selX);
+        const QSignalBlocker blockY(m_selY);
+        const QSignalBlocker blockW(m_selW);
+        const QSignalBlocker blockH(m_selH);
+        m_selX->setValue(selected.rect.x());
+        m_selY->setValue(selected.rect.y());
+        m_selW->setValue(selected.rect.width());
+        m_selH->setValue(selected.rect.height());
+    }
+    const bool boxEditable = selected.editable && selected.type != core::AnnotationType::Ink
+        && selected.type != core::AnnotationType::Highlight
+        && selected.type != core::AnnotationType::Underline
+        && selected.type != core::AnnotationType::StrikeOut
+        && selected.type != core::AnnotationType::Squiggly;
+    for (QDoubleSpinBox *box : { m_selX, m_selY, m_selW, m_selH })
+        box->setEnabled(boxEditable);
 
     m_selColor->setIcon(colorWell(selected.color));
     m_selColor->setEnabled(selected.editable);

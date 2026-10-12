@@ -118,6 +118,10 @@ PageView::PageView(core::DocumentSession *session, QWidget *parent)
     });
     connect(m_session, &core::DocumentSession::markupStyleChanged, this,
             [this] { refreshOverlay(m_drawPage); });
+    connect(m_session, &core::DocumentSession::nightModeChanged, this, [this] {
+        for (PageItem *item : m_items)
+            item->update();
+    });
     connect(m_session, &core::DocumentSession::pageInvalidated, this, [this](int pageIndex) {
         if (pageIndex < 0) {
             for (PageItem *item : m_items)
@@ -815,22 +819,32 @@ void PageView::createTextBoxAt(int pageIndex, const QPointF &pagePoint)
                                     return a.size() < b.size();
                                 })
                                 ->size();
-    const qreal width = qBound(80.0, longestLine * 6.2, 420.0);
-    const qreal height = qMax(24.0, text.count(QLatin1Char('\n')) * 14.0 + 22.0);
+    const qreal fontSize = m_session->markupFontSize();
+    const qreal width = qBound(80.0, longestLine * fontSize * 0.55, 460.0);
+    const qreal height = qMax(fontSize + 10.0, text.count(QLatin1Char('\n')) * (fontSize + 4.0) + fontSize + 8.0);
 
     core::AnnotationSpec spec;
     spec.type = core::AnnotationType::FreeText;
     spec.pageIndex = pageIndex;
     spec.rect = QRectF(pagePoint, QSizeF(width, height));
-    spec.color = QColor(0x14, 0x18, 0x25);
+    spec.color = m_session->markupColor();
     spec.contents = text;
     spec.author = m_session->author();
-    spec.fontSize = 11.0;
+    spec.fontSize = fontSize;
     m_session->addAnnotation(spec);
 }
 
 void PageView::createStampAt(int pageIndex, const QPointF &pagePoint)
 {
+    const QImage custom = m_session->customStamp();
+    if (!custom.isNull()) {
+        const qreal width = 160.0;
+        const qreal height = custom.height() * width / qMax(1, custom.width());
+        const QRectF rect(pagePoint.x() - width / 2.0, pagePoint.y() - height / 2.0, width, height);
+        m_session->addImage(pageIndex, custom, rect, tr("Add stamp"));
+        return;
+    }
+
     constexpr qreal width = 140.0;
     constexpr qreal height = 40.0;
     core::AnnotationSpec spec;
@@ -885,6 +899,7 @@ void PageView::commitPendingAnnotation()
         case core::Tool::Ellipse:
             spec.type = core::AnnotationType::Circle;
             spec.color = m_session->markupColor();
+            spec.interiorColor = m_session->markupFill();
             break;
         case core::Tool::Redact:
             spec.type = core::AnnotationType::Redact;
@@ -894,6 +909,7 @@ void PageView::commitPendingAnnotation()
         default:
             spec.type = core::AnnotationType::Square;
             spec.color = m_session->markupColor();
+            spec.interiorColor = m_session->markupFill();
             break;
         }
         m_session->addAnnotation(spec);

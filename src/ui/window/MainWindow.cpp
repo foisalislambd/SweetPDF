@@ -3,7 +3,9 @@
 #include "core/pdf/PdfDocument.h"
 #include "core/pdf/PdfExport.h"
 #include "core/session/DocumentSession.h"
+#include "ui/dialogs/CompareDialog.h"
 #include "ui/dialogs/ExportImagesDialog.h"
+#include "ui/dialogs/HeaderFooterDialog.h"
 #include "ui/dialogs/OcrDialog.h"
 #include "ui/dialogs/PageRangeInput.h"
 #include "ui/dialogs/PreferencesDialog.h"
@@ -23,7 +25,15 @@
 #include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QCheckBox>
+#include <QClipboard>
 #include <QColorDialog>
+#include <QComboBox>
+#include <QDesktopServices>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QListWidget>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -32,6 +42,8 @@
 #include <QFileInfo>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QImage>
+#include <QImageReader>
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
@@ -44,11 +56,13 @@
 #include <QPrinter>
 #include <QProgressDialog>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QResizeEvent>
 #include <QSaveFile>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSlider>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QStandardPaths>
@@ -59,6 +73,7 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cmath>
 
 namespace sweet::ui {
@@ -81,6 +96,34 @@ qreal sliderToZoom(int value)
     const qreal span = std::log(core::DocumentSession::maxZoom / core::DocumentSession::minZoom);
     return core::DocumentSession::minZoom
         * std::exp(span * value / static_cast<qreal>(zoomSliderResolution));
+}
+
+core::AnnotationSpec copyOf(const core::Annotation &annotation, int pageIndex, const QPointF &delta)
+{
+    core::AnnotationSpec spec;
+    spec.type = annotation.type;
+    spec.pageIndex = pageIndex;
+    spec.rect = annotation.rect.translated(delta);
+    for (const QRectF &quad : annotation.quads)
+        spec.quads.append(quad.translated(delta));
+    for (const QPolygonF &stroke : annotation.strokes) {
+        QPolygonF moved;
+        for (const QPointF &point : stroke)
+            moved.append(point + delta);
+        spec.strokes.append(moved);
+    }
+    spec.lineStart = annotation.lineStart + delta;
+    spec.lineEnd = annotation.lineEnd + delta;
+    spec.hasLineEndpoints = annotation.type == core::AnnotationType::Line;
+    spec.lineStartStyle = annotation.lineStartStyle;
+    spec.lineEndStyle = annotation.lineEndStyle;
+    spec.color = annotation.color;
+    spec.opacity = annotation.opacity;
+    spec.borderWidth = annotation.borderWidth;
+    spec.contents = annotation.contents;
+    spec.author = annotation.author;
+    spec.iconName = annotation.iconName;
+    return spec;
 }
 
 } // namespace
@@ -173,6 +216,12 @@ void MainWindow::createActions()
     connect(makeAction(QStringLiteral("open"), tr("Open"), QStringLiteral("open"),
                        QKeySequence::Open),
             &QAction::triggered, this, &MainWindow::openFileDialog);
+    connect(makeAction(QStringLiteral("newDocument"), tr("New"), QStringLiteral("file-pdf"),
+                       QKeySequence::New),
+            &QAction::triggered, this, &MainWindow::newDocument);
+    connect(makeAction(QStringLiteral("fromImages"), tr("PDF from Images"), QStringLiteral("add-image"),
+                       QKeySequence()),
+            &QAction::triggered, this, &MainWindow::newDocumentFromImages);
 
     // Every command that needs an open document is registered the same way, so
     // enabling and disabling them stays in one place.
@@ -335,6 +384,39 @@ void MainWindow::createActions()
                       QKeySequence(), [this] { mergeDocuments(); });
     addDocumentAction(QStringLiteral("split"), tr("Split"), QStringLiteral("split"),
                       QKeySequence(), [this] { splitDocument(); });
+    addDocumentAction(QStringLiteral("reversePages"), tr("Reverse Pages"), QStringLiteral("pages"),
+                      QKeySequence(), [this] { reversePages(); });
+    addDocumentAction(QStringLiteral("rotateAllPages"), tr("Rotate All Pages"),
+                      QStringLiteral("rotate-right"), QKeySequence(), [this] { rotateAllPages(); });
+    addDocumentAction(QStringLiteral("goToPage"), tr("Go to Page"), QStringLiteral("search"),
+                      QKeySequence(Qt::CTRL | Qt::Key_G), [this] { goToPage(); });
+    addDocumentAction(QStringLiteral("copyPageImage"), tr("Copy Page Image"), QStringLiteral("copy"),
+                      QKeySequence(), [this] { copyPageImage(); });
+    addDocumentAction(QStringLiteral("presentation"), tr("Presentation"), QStringLiteral("eye"),
+                      QKeySequence(Qt::Key_F5), [this] { setPresentation(!m_presenting); });
+    addDocumentAction(QStringLiteral("duplicateSelection"), tr("Duplicate Selection"),
+                      QStringLiteral("duplicate"), QKeySequence(),
+                      [this] { duplicateSelection(); });
+    addDocumentAction(QStringLiteral("copySelectionPages"), tr("Copy to All Pages"),
+                      QStringLiteral("pages"), QKeySequence(),
+                      [this] { copySelectionAcrossPages(); });
+    addDocumentAction(QStringLiteral("clearDescription"), tr("Clear Description"),
+                      QStringLiteral("trash"), QKeySequence(), [this] { clearDescription(); });
+    addDocumentAction(QStringLiteral("deleteOddEven"), tr("Delete Odd or Even"),
+                      QStringLiteral("page-delete"), QKeySequence(),
+                      [this] { deleteOddOrEvenPages(); });
+    addDocumentAction(QStringLiteral("grayscale"), tr("Grayscale"), QStringLiteral("layers"),
+                      QKeySequence(), [this] { convertToGrayscale(); });
+    addDocumentAction(QStringLiteral("removeComments"), tr("Remove Comments"),
+                      QStringLiteral("trash"), QKeySequence(), [this] { removeAllComments(); });
+    addDocumentAction(QStringLiteral("exportComments"), tr("Export Comments"),
+                      QStringLiteral("export"), QKeySequence(), [this] { exportComments(); });
+    addDocumentAction(QStringLiteral("documentStats"), tr("Document Info"), QStringLiteral("info"),
+                      QKeySequence(), [this] { showDocumentStats(); });
+    addDocumentAction(QStringLiteral("reload"), tr("Reload"), QStringLiteral("open"),
+                      QKeySequence(), [this] { reloadDocument(); });
+    addDocumentAction(QStringLiteral("revealFile"), tr("Show in Folder"), QStringLiteral("folder"),
+                      QKeySequence(), [this] { revealDocument(); });
 
     // Page rotation acts on the document, unlike the view rotation above.
     addDocumentAction(QStringLiteral("rotatePagesLeft"), tr("Rotate Page Left"),
@@ -377,6 +459,12 @@ void MainWindow::createActions()
                       QKeySequence(), [this] { compressDocument(); });
     addDocumentAction(QStringLiteral("watermark"), tr("Watermark"), QStringLiteral("watermark"),
                       QKeySequence(), [this] { addWatermark(); });
+    addDocumentAction(QStringLiteral("headerFooter"), tr("Header and Footer"),
+                      QStringLiteral("text-select"), QKeySequence(), [this] { addHeaderFooter(); });
+    addDocumentAction(QStringLiteral("cropPage"), tr("Crop Page"), QStringLiteral("crop"),
+                      QKeySequence(), [this] { cropCurrentPage(); });
+    addDocumentAction(QStringLiteral("compare"), tr("Compare"), QStringLiteral("pages"),
+                      QKeySequence(), [this] { compareDocument(); });
     addDocumentAction(QStringLiteral("encrypt"), tr("Protect"), QStringLiteral("lock"),
                       QKeySequence(), [this] { protectDocument(); });
     addDocumentAction(QStringLiteral("applyRedactions"), tr("Apply Redactions"),
@@ -405,6 +493,16 @@ void MainWindow::createActions()
                       QKeySequence(), [this] { addImageToPage(); });
     addDocumentAction(QStringLiteral("addLink"), tr("Link"), QStringLiteral("link"), QKeySequence(),
                       [this] { addLinkToPage(); });
+    addDocumentAction(QStringLiteral("manageLinks"), tr("Edit Links"), QStringLiteral("link"),
+                      QKeySequence(), [this] { manageLinks(); });
+    addDocumentAction(QStringLiteral("replaceAll"), tr("Replace All"), QStringLiteral("edit-text"),
+                      QKeySequence(), [this] { replaceAllText(); });
+    addDocumentAction(QStringLiteral("addFormField"), tr("New Field"), QStringLiteral("form"),
+                      QKeySequence(), [this] { addFormField(); });
+    addDocumentAction(QStringLiteral("customStamp"), tr("Image Stamp"), QStringLiteral("stamp"),
+                      QKeySequence(), [this] { chooseCustomStamp(); });
+    addDocumentAction(QStringLiteral("replyAnnotation"), tr("Reply"), QStringLiteral("comment"),
+                      QKeySequence(), [this] { replyToSelection(); });
     addDocumentAction(QStringLiteral("sign"), tr("Sign"), QStringLiteral("sign"), QKeySequence(),
                       [this] { signDocument(); });
     addDocumentAction(QStringLiteral("forms"), tr("Form Fields"), QStringLiteral("form"),
@@ -543,6 +641,14 @@ void MainWindow::createActions()
         updateInspectorVisibility();
     });
 
+    QAction *night = makeAction(QStringLiteral("nightMode"), tr("Night Reading"),
+                                QStringLiteral("moon"));
+    night->setCheckable(true);
+    connect(night, &QAction::toggled, this, [this](bool on) {
+        if (auto *session = currentSession())
+            session->setNightMode(on);
+    });
+
     QAction *theme = makeAction(QStringLiteral("toggleTheme"), tr("Dark Mode"),
                                 QStringLiteral("moon"));
     theme->setCheckable(true);
@@ -564,6 +670,31 @@ void MainWindow::createActions()
         setWindowState(on ? windowState() | Qt::WindowFullScreen
                           : windowState() & ~Qt::WindowFullScreen);
     });
+
+    const auto presentKey = [this](const QKeySequence &key, int delta) {
+        auto *entry = new QAction(this);
+        entry->setShortcut(key);
+        entry->setShortcutContext(Qt::ApplicationShortcut);
+        entry->setEnabled(false);
+        addAction(entry);
+        connect(entry, &QAction::triggered, this, [this, delta] {
+            if (!m_presenting)
+                return;
+            if (delta == 0)
+                setPresentation(false);
+            else if (auto *session = currentSession())
+                session->setCurrentPage(session->currentPage() + delta);
+        });
+        m_presentKeys.append(entry);
+    };
+    presentKey(QKeySequence(Qt::Key_Right), 1);
+    presentKey(QKeySequence(Qt::Key_Down), 1);
+    presentKey(QKeySequence(Qt::Key_Space), 1);
+    presentKey(QKeySequence(Qt::Key_PageDown), 1);
+    presentKey(QKeySequence(Qt::Key_Left), -1);
+    presentKey(QKeySequence(Qt::Key_Up), -1);
+    presentKey(QKeySequence(Qt::Key_PageUp), -1);
+    presentKey(QKeySequence(Qt::Key_Escape), 0);
 
     // Short captions for the ribbon cells. Menus and tooltips keep the full text;
     // long names like "Rotate Page Left" are hard to scan under an icon.
@@ -598,7 +729,25 @@ void MainWindow::createActions()
     shortCaption(QStringLiteral("fitWidth"), tr("Width"));
     shortCaption(QStringLiteral("toggleSidebar"), tr("Nav"));
     shortCaption(QStringLiteral("toggleProperties"), tr("Props"));
-    shortCaption(QStringLiteral("actualSize"), tr("100%"));
+    shortCaption(QStringLiteral("headerFooter"), tr("Header"));
+    shortCaption(QStringLiteral("cropPage"), tr("Crop"));
+    shortCaption(QStringLiteral("replaceAll"), tr("Replace"));
+    shortCaption(QStringLiteral("addFormField"), tr("Field"));
+    shortCaption(QStringLiteral("manageLinks"), tr("Links"));
+    shortCaption(QStringLiteral("compare"), tr("Compare"));
+    shortCaption(QStringLiteral("nightMode"), tr("Night"));
+    shortCaption(QStringLiteral("reversePages"), tr("Reverse"));
+    shortCaption(QStringLiteral("rotateAllPages"), tr("All"));
+    shortCaption(QStringLiteral("goToPage"), tr("Go to"));
+    shortCaption(QStringLiteral("copyPageImage"), tr("Copy"));
+    shortCaption(QStringLiteral("presentation"), tr("Present"));
+    shortCaption(QStringLiteral("duplicateSelection"), tr("Copy"));
+    shortCaption(QStringLiteral("copySelectionPages"), tr("All pages"));
+    shortCaption(QStringLiteral("clearDescription"), tr("Clear"));
+    shortCaption(QStringLiteral("newDocument"), tr("New"));
+    shortCaption(QStringLiteral("fromImages"), tr("Images"));
+    shortCaption(QStringLiteral("grayscale"), tr("Gray"));
+    shortCaption(QStringLiteral("documentStats"), tr("Info"));
 }
 
 // --- Menus -----------------------------------------------------------------
@@ -609,18 +758,23 @@ void MainWindow::createAppMenu()
 
     QMenu *file = m_appMenu->addMenu(tr("&File"));
     file->setIcon(icon(QStringLiteral("file-pdf")));
+    file->addAction(action(QStringLiteral("newDocument")));
+    file->addAction(action(QStringLiteral("fromImages")));
     file->addAction(action(QStringLiteral("open")));
     m_recentMenu = file->addMenu(tr("Open &Recent"));
     file->addSeparator();
     file->addAction(action(QStringLiteral("save")));
     file->addAction(action(QStringLiteral("saveAs")));
     file->addAction(action(QStringLiteral("saveCopy")));
+    file->addAction(action(QStringLiteral("reload")));
+    file->addAction(action(QStringLiteral("revealFile")));
 
     QMenu *exportMenu = file->addMenu(tr("&Export As"));
     exportMenu->setIcon(icon(QStringLiteral("export")));
     exportMenu->addAction(action(QStringLiteral("exportImages")));
     exportMenu->addAction(action(QStringLiteral("exportText")));
     exportMenu->addAction(action(QStringLiteral("exportHtml")));
+    exportMenu->addAction(action(QStringLiteral("exportComments")));
     file->addSeparator();
     file->addAction(action(QStringLiteral("print")));
     file->addSeparator();
@@ -643,6 +797,8 @@ void MainWindow::createAppMenu()
     edit->addAction(action(QStringLiteral("addText")));
     edit->addAction(action(QStringLiteral("addImage")));
     edit->addAction(action(QStringLiteral("addLink")));
+    edit->addAction(action(QStringLiteral("manageLinks")));
+    edit->addAction(action(QStringLiteral("replaceAll")));
     edit->addSeparator();
     edit->addAction(action(QStringLiteral("settings")));
 
@@ -664,6 +820,9 @@ void MainWindow::createAppMenu()
     view->addAction(action(QStringLiteral("toggleSidebar")));
     view->addAction(action(QStringLiteral("toggleProperties")));
     view->addAction(action(QStringLiteral("toggleTheme")));
+    view->addAction(action(QStringLiteral("goToPage")));
+    view->addAction(action(QStringLiteral("presentation")));
+    view->addAction(action(QStringLiteral("copyPageImage")));
     view->addAction(action(QStringLiteral("fullScreen")));
 
     QMenu *page = m_appMenu->addMenu(tr("&Page"));
@@ -676,6 +835,10 @@ void MainWindow::createAppMenu()
     page->addSeparator();
     page->addAction(action(QStringLiteral("rotatePagesLeft")));
     page->addAction(action(QStringLiteral("rotatePagesRight")));
+    page->addAction(action(QStringLiteral("rotateAllPages")));
+    page->addAction(action(QStringLiteral("reversePages")));
+    page->addAction(action(QStringLiteral("deleteOddEven")));
+    page->addAction(action(QStringLiteral("grayscale")));
     page->addSeparator();
     page->addAction(action(QStringLiteral("merge")));
     page->addAction(action(QStringLiteral("split")));
@@ -740,6 +903,7 @@ void MainWindow::createRibbon()
     // instead. Stacking them beside the large buttons forced the whole ribbon to
     // grow taller than the commands that actually need to be one click away.
     RibbonGroup *fileGroup = home->addGroup(tr("File"));
+    fileGroup->addAction(action(QStringLiteral("newDocument")));
     fileGroup->addAction(action(QStringLiteral("open")));
     fileGroup->addAction(action(QStringLiteral("save")));
     fileGroup->addAction(action(QStringLiteral("print")));
@@ -781,6 +945,9 @@ void MainWindow::createRibbon()
     editShapes->addAction(action(QStringLiteral("addArrow")));
     RibbonGroup *editLinks = editPage->addGroup(tr("Links"));
     editLinks->addAction(action(QStringLiteral("addLink")));
+    editLinks->addAction(action(QStringLiteral("manageLinks")));
+    RibbonGroup *editReplace = editPage->addGroup(tr("Replace"));
+    editReplace->addAction(action(QStringLiteral("replaceAll")));
     RibbonGroup *editClipboard = editPage->addGroup(tr("Clipboard"));
     editClipboard->addAction(action(QStringLiteral("copy")));
     editClipboard->addAction(action(QStringLiteral("selectAll")));
@@ -801,6 +968,9 @@ void MainWindow::createRibbon()
     drawing->addAction(action(QStringLiteral("addText")));
     RibbonGroup *commentManage = commentPage->addGroup(tr("Manage"));
     commentManage->addAction(action(QStringLiteral("deleteAnnotation")));
+    commentManage->addAction(action(QStringLiteral("duplicateSelection")));
+    commentManage->addAction(action(QStringLiteral("copySelectionPages")));
+    commentManage->addAction(action(QStringLiteral("removeComments")));
 
     RibbonPage *pagePage = m_ribbon->addPage(tr("Page"));
     RibbonGroup *organise = pagePage->addGroup(tr("Organise"));
@@ -809,15 +979,21 @@ void MainWindow::createRibbon()
     organise->addAction(action(QStringLiteral("extractPages")));
     organise->addCompactAction(action(QStringLiteral("insertFromFile")));
     organise->addCompactAction(action(QStringLiteral("duplicatePage")));
+    organise->addCompactAction(action(QStringLiteral("cropPage")));
+    organise->addCompactAction(action(QStringLiteral("headerFooter")));
+    organise->addCompactAction(action(QStringLiteral("reversePages")));
     RibbonGroup *transform = pagePage->addGroup(tr("Rotate Pages"));
     transform->addAction(action(QStringLiteral("rotatePagesLeft")));
     transform->addAction(action(QStringLiteral("rotatePagesRight")));
+    transform->addCompactAction(action(QStringLiteral("rotateAllPages")));
     RibbonGroup *viewRotate = pagePage->addGroup(tr("Rotate View"));
     viewRotate->addCompactAction(action(QStringLiteral("rotateLeft")));
     viewRotate->addCompactAction(action(QStringLiteral("rotateRight")));
     RibbonGroup *documents = pagePage->addGroup(tr("Documents"));
     documents->addAction(action(QStringLiteral("merge")));
     documents->addAction(action(QStringLiteral("split")));
+    documents->addAction(action(QStringLiteral("grayscale")));
+    documents->addAction(action(QStringLiteral("documentStats")));
 
     RibbonPage *viewPage = m_ribbon->addPage(tr("View"));
     RibbonGroup *zoomGroup = viewPage->addGroup(tr("Zoom"));
@@ -826,6 +1002,9 @@ void MainWindow::createRibbon()
     zoomGroup->addAction(action(QStringLiteral("actualSize")));
     zoomGroup->addAction(action(QStringLiteral("fitPage")));
     zoomGroup->addAction(action(QStringLiteral("fitWidth")));
+    zoomGroup->addAction(action(QStringLiteral("goToPage")));
+    zoomGroup->addAction(action(QStringLiteral("presentation")));
+    zoomGroup->addAction(action(QStringLiteral("copyPageImage")));
     RibbonGroup *layoutGroup = viewPage->addGroup(tr("Layout"));
     layoutGroup->addAction(action(QStringLiteral("layoutSingle")));
     layoutGroup->addAction(action(QStringLiteral("layoutContinuous")));
@@ -833,6 +1012,8 @@ void MainWindow::createRibbon()
     RibbonGroup *panelGroup = viewPage->addGroup(tr("Panels"));
     panelGroup->addAction(action(QStringLiteral("toggleSidebar")));
     panelGroup->addAction(action(QStringLiteral("toggleProperties")));
+    panelGroup->addAction(action(QStringLiteral("compare")));
+    panelGroup->addAction(action(QStringLiteral("nightMode")));
     panelGroup->addAction(action(QStringLiteral("toggleTheme")));
 
     RibbonPage *protectPage = m_ribbon->addPage(tr("Protect"));
@@ -856,9 +1037,11 @@ void MainWindow::createRibbon()
     exportGroup->addAction(action(QStringLiteral("exportHtml")));
     RibbonGroup *formsGroup = toolsPage->addGroup(tr("Forms"));
     formsGroup->addAction(action(QStringLiteral("forms")));
+    formsGroup->addAction(action(QStringLiteral("addFormField")));
     formsGroup->addAction(action(QStringLiteral("flatten")));
     RibbonGroup *settingsGroup = toolsPage->addGroup(tr("Application"));
     settingsGroup->addAction(action(QStringLiteral("settings")));
+    settingsGroup->addAction(action(QStringLiteral("clearDescription")));
 
     auto *themeButton = new QToolButton(m_ribbon);
     themeButton->setDefaultAction(action(QStringLiteral("toggleTheme")));
@@ -1159,6 +1342,12 @@ bool MainWindow::openFile(const QString &path)
     else
         session->setZoomMode(core::ZoomMode::FitWidth);
 
+    finishOpening(session, path, true);
+    return true;
+}
+
+void MainWindow::finishOpening(core::DocumentSession *session, const QString &path, bool remember)
+{
     auto *page = new QWidget(m_tabs);
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -1187,7 +1376,7 @@ bool MainWindow::openFile(const QString &path)
             });
 
     const int index = m_tabs->addTab(page, session->displayName());
-    m_tabs->setTabToolTip(index, path);
+    m_tabs->setTabToolTip(index, path.isEmpty() ? session->displayName() : path);
 
     // Qt's built-in close button ignores the stylesheet, so use a themed one.
     auto *closeButton = new QToolButton(m_tabs);
@@ -1216,9 +1405,9 @@ bool MainWindow::openFile(const QString &path)
         updateWindowTitleFromSession();
     });
 
-    addRecentFile(path);
+    if (remember && !path.isEmpty())
+        addRecentFile(path);
     updateForCurrentDocument();
-    return true;
 }
 
 void MainWindow::openFileDialog()
@@ -1229,6 +1418,356 @@ void MainWindow::openFileDialog()
            "PDF files (*.pdf);;Markdown (*.md *.markdown);;All files (*)"));
     for (const QString &path : paths)
         openFile(path);
+}
+
+void MainWindow::prepareNewSession(core::DocumentSession *session)
+{
+    const QSettings settings;
+    session->setAuthor(settings.value(PreferencesDialog::authorKey(),
+                                     qEnvironmentVariable("USER", tr("SweetPDF user")))
+                           .toString());
+    const QString startZoom =
+        settings.value(PreferencesDialog::defaultZoomKey(), QStringLiteral("fitWidth")).toString();
+    if (startZoom == QLatin1String("fitPage"))
+        session->setZoomMode(core::ZoomMode::FitPage);
+    else if (startZoom == QLatin1String("actualSize"))
+        session->setZoom(1.0);
+    else
+        session->setZoomMode(core::ZoomMode::FitWidth);
+}
+
+void MainWindow::newDocument()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("New document"));
+    auto *form = new QFormLayout;
+    auto *paper = new QComboBox(&dialog);
+    paper->addItem(tr("A4"), QSizeF(595.28, 841.89));
+    paper->addItem(tr("Letter"), QSizeF(612, 792));
+    paper->addItem(tr("Legal"), QSizeF(612, 1008));
+    paper->addItem(tr("A3"), QSizeF(841.89, 1190.55));
+    auto *countBox = new QSpinBox(&dialog);
+    countBox->setRange(1, 200);
+    countBox->setValue(1);
+    form->addRow(tr("Size"), paper);
+    form->addRow(tr("Pages"), countBox);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel | QDialogButtonBox::Ok, &dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    auto *column = new QVBoxLayout(&dialog);
+    column->addLayout(form);
+    column->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    const QSizeF size = paper->currentData().toSizeF();
+    const int count = countBox->value();
+    std::shared_ptr<core::PdfDocument> document;
+    try {
+        document = core::PdfDocument::createEmpty(size);
+    } catch (const std::exception &failure) {
+        reportError(tr("Could not create a document"), QString::fromUtf8(failure.what()));
+        return;
+    }
+
+    auto *session = new core::DocumentSession(this);
+    session->takeDocument(std::move(document), QString());
+    prepareNewSession(session);
+    if (count > 1) {
+        QString error;
+        if (!session->applyStructuralEdit(
+                tr("Insert blank page"),
+                [size, count](core::PdfDocument &created) {
+                    for (int index = 1; index < count; ++index)
+                        created.insertBlankPage(index, size);
+                },
+                &error)) {
+            reportError(tr("Could not add every page"), error);
+        }
+    }
+    finishOpening(session, QString(), false);
+}
+
+void MainWindow::newDocumentFromImages()
+{
+    const QStringList paths = QFileDialog::getOpenFileNames(
+        this, tr("Images to turn into a PDF"), QString(),
+        tr("Images (*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff)"));
+    if (paths.isEmpty())
+        return;
+
+    QList<QImage> images;
+    QStringList skipped;
+    for (const QString &path : paths) {
+        QImageReader reader(path);
+        reader.setAutoTransform(true);
+        const QImage image = reader.read();
+        if (image.isNull())
+            skipped.append(QFileInfo(path).fileName());
+        else
+            images.append(image);
+    }
+    if (images.isEmpty()) {
+        reportError(tr("Could not read the images"), tr("None of the files could be opened."));
+        return;
+    }
+
+    // Honour the file's own resolution. A 300 DPI scan stays letter-sized;
+    // a picture with no resolution is treated as 96 DPI.
+    const auto pageSize = [](const QImage &image) {
+        const double dpiX = image.dotsPerMeterX() > 0 ? image.dotsPerMeterX() * 0.0254 : 96.0;
+        const double dpiY = image.dotsPerMeterY() > 0 ? image.dotsPerMeterY() * 0.0254 : 96.0;
+        return QSizeF(qMax(36.0, image.width() * 72.0 / dpiX),
+                      qMax(36.0, image.height() * 72.0 / dpiY));
+    };
+
+    std::shared_ptr<core::PdfDocument> document;
+    try {
+        document = core::PdfDocument::createEmpty(pageSize(images.first()));
+    } catch (const std::exception &failure) {
+        reportError(tr("Could not create a document"), QString::fromUtf8(failure.what()));
+        return;
+    }
+
+    auto *session = new core::DocumentSession(this);
+    session->takeDocument(std::move(document), QString());
+    prepareNewSession(session);
+    finishOpening(session, QString(), false);
+
+    session->undoStack()->beginMacro(tr("PDF from images"));
+    QString error;
+    const QSizeF first = pageSize(images.first());
+    bool placed = session->addImage(0, images.first(), QRectF(QPointF(0, 0), first),
+                                    tr("Place image"), &error);
+    for (int index = 1; placed && index < images.size(); ++index) {
+        const QSizeF size = pageSize(images.at(index));
+        placed = session->applyStructuralEdit(
+            tr("Insert blank page"),
+            [index, size](core::PdfDocument &created) { created.insertBlankPage(index, size); },
+            &error);
+        if (placed) {
+            placed = session->addImage(index, images.at(index), QRectF(QPointF(0, 0), size),
+                                       tr("Place image"), &error);
+        }
+    }
+    session->undoStack()->endMacro();
+    if (!placed) {
+        reportError(tr("Could not build the PDF"), error);
+        return;
+    }
+    if (skipped.isEmpty())
+        report(tr("Created a PDF from %n image(s).", nullptr, images.size()));
+    else
+        report(tr("Created a PDF from %1 image(s). Skipped: %2")
+                   .arg(images.size())
+                   .arg(skipped.join(QStringLiteral(", "))));
+}
+
+void MainWindow::deleteOddOrEvenPages()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument(true))
+        return;
+    if (session->pageCount() < 2) {
+        report(tr("There is only one page."));
+        return;
+    }
+
+    bool accepted = false;
+    const QString which = QInputDialog::getItem(this, tr("Delete pages"), tr("Remove:"),
+                                                { tr("Odd pages"), tr("Even pages") }, 0, false,
+                                                &accepted);
+    if (!accepted)
+        return;
+
+    const bool odd = which == tr("Odd pages");
+    QList<int> pages;
+    for (int index = 0; index < session->pageCount(); ++index) {
+        const bool isOdd = (index % 2) == 0;
+        if (isOdd == odd)
+            pages.append(index);
+    }
+    if (pages.size() >= session->pageCount()) {
+        report(tr("A document has to keep at least one page."));
+        return;
+    }
+
+    QString error;
+    if (session->applyStructuralEdit(
+            tr("Delete pages"),
+            [pages](core::PdfDocument &document) { document.deletePages(pages); }, &error))
+        report(tr("Removed %n page(s).", nullptr, pages.size()));
+    else
+        reportError(tr("Could not delete the pages"), error);
+}
+
+void MainWindow::convertToGrayscale()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument(true))
+        return;
+    QString error;
+    if (session->convertToGrayscale(&error))
+        report(tr("Converted the document to grayscale."));
+    else
+        reportError(tr("Could not convert to grayscale"), error);
+}
+
+void MainWindow::removeAllComments()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument())
+        return;
+    const QList<core::Annotation> comments = core::annotations::all(*session->document());
+    QList<core::Annotation> removable;
+    for (const core::Annotation &annotation : comments) {
+        if (annotation.editable)
+            removable.append(annotation);
+    }
+    if (removable.isEmpty()) {
+        report(tr("There are no comments to remove."));
+        return;
+    }
+    const auto choice = QMessageBox::question(
+        this, tr("Remove comments"),
+        tr("Delete %n comment(s), drawing(s) and stamp(s)?", nullptr, removable.size()),
+        QMessageBox::Cancel | QMessageBox::Yes, QMessageBox::Cancel);
+    if (choice != QMessageBox::Yes)
+        return;
+
+    session->undoStack()->beginMacro(tr("Remove comments"));
+    int removed = 0;
+    for (const core::Annotation &annotation : removable) {
+        if (session->removeAnnotation(annotation))
+            ++removed;
+    }
+    session->undoStack()->endMacro();
+    report(tr("Removed %n comment(s).", nullptr, removed));
+}
+
+void MainWindow::exportComments()
+{
+    auto *session = currentSession();
+    if (!session || !session->isLoaded() || !session->document()->isPdf())
+        return;
+    QList<core::Annotation> comments;
+    for (const core::Annotation &annotation : core::annotations::all(*session->document())) {
+        if (annotation.editable)
+            comments.append(annotation);
+    }
+    if (comments.isEmpty()) {
+        report(tr("This document has no comments."));
+        return;
+    }
+
+    const QString path = QFileDialog::getSaveFileName(this, tr("Export comments"),
+                                                      suggestedPath(tr("-comments"), QStringLiteral("txt")),
+                                                      tr("Text files (*.txt)"));
+    if (path.isEmpty())
+        return;
+
+    QString text;
+    for (const core::Annotation &annotation : comments) {
+        text += tr("Page %1 — %2")
+                    .arg(annotation.pageIndex + 1)
+                    .arg(core::annotations::displayName(annotation.type));
+        if (!annotation.author.isEmpty())
+            text += tr(" — %1").arg(annotation.author);
+        text += QLatin1Char('\n');
+        if (!annotation.contents.isEmpty())
+            text += annotation.contents + QLatin1Char('\n');
+        text += QLatin1Char('\n');
+    }
+
+    QSaveFile file(path);
+    const QByteArray bytes = text.toUtf8();
+    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) {
+        reportError(tr("Could not write the file"), file.errorString());
+        return;
+    }
+    report(tr("Exported %n comment(s).", nullptr, comments.size()));
+}
+
+void MainWindow::showDocumentStats()
+{
+    auto *session = currentSession();
+    if (!session || !session->isLoaded())
+        return;
+
+    int words = 0;
+    for (int index = 0; index < session->pageCount(); ++index) {
+        auto page = session->document()->page(index);
+        if (!page || !page->textLayer())
+            continue;
+        words += page->textLayer()->plainText().split(QRegularExpression(QStringLiteral("\\s+")),
+                                                      Qt::SkipEmptyParts)
+                     .size();
+    }
+    int comments = 0;
+    if (session->document()->isPdf()) {
+        for (const core::Annotation &annotation : core::annotations::all(*session->document())) {
+            if (annotation.editable)
+                ++comments;
+        }
+    }
+    const core::DocumentInfo info = session->document()->info();
+    const QString fileSize = session->filePath().isEmpty()
+        ? tr("Not saved yet")
+        : QLocale().formattedDataSize(info.fileSize);
+    QMessageBox::information(
+        this, tr("Document info"),
+        tr("Pages: %1\nWords: %2\nComments: %3\nFile size: %4\nFormat: %5")
+            .arg(session->pageCount())
+            .arg(words)
+            .arg(comments)
+            .arg(fileSize)
+            .arg(info.format.isEmpty() ? tr("PDF") : info.format));
+}
+
+void MainWindow::reloadDocument()
+{
+    auto *session = currentSession();
+    if (!session || !session->isLoaded())
+        return;
+    if (session->filePath().isEmpty()) {
+        report(tr("This document has not been saved yet."));
+        return;
+    }
+    if (session->isModified()) {
+        const auto choice = QMessageBox::question(
+            this, tr("Reload"),
+            tr("Reload %1 and discard unsaved changes?").arg(session->displayName()),
+            QMessageBox::Cancel | QMessageBox::Yes, QMessageBox::Cancel);
+        if (choice != QMessageBox::Yes)
+            return;
+    }
+
+    QString password;
+    if (core::PdfDocument::needsPassword(session->filePath())) {
+        bool accepted = false;
+        password = QInputDialog::getText(this, tr("Password required"), tr("Password:"),
+                                        QLineEdit::Password, QString(), &accepted);
+        if (!accepted)
+            return;
+    }
+    QString error;
+    const QString path = session->filePath();
+    if (!session->load(path, password, &error))
+        reportError(tr("Could not reload"), error);
+    else
+        report(tr("Reloaded %1.").arg(session->displayName()));
+}
+
+void MainWindow::revealDocument()
+{
+    auto *session = currentSession();
+    if (!session || session->filePath().isEmpty()) {
+        report(tr("This document has not been saved yet."));
+        return;
+    }
+    const QString folder = QFileInfo(session->filePath()).absolutePath();
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(folder)))
+        reportError(tr("Could not open the folder"), folder);
 }
 
 void MainWindow::closeTab(int index)
@@ -1458,6 +1997,10 @@ void MainWindow::updateForCurrentDocument()
 
     action(QStringLiteral("undo"))->setEnabled(session->undoStack()->canUndo());
     action(QStringLiteral("redo"))->setEnabled(session->undoStack()->canRedo());
+    if (QAction *night = action(QStringLiteral("nightMode"))) {
+        const QSignalBlocker nightBlock(night);
+        night->setChecked(session->nightMode());
+    }
     updateWindowTitleFromSession();
 }
 
@@ -1639,6 +2182,15 @@ void MainWindow::printDocument()
         return;
     }
 
+    bool layoutAccepted = false;
+    const QString layout = QInputDialog::getItem(
+        this, tr("Print layout"), tr("Pages on each sheet:"),
+        { tr("1"), tr("2 side by side"), tr("4"), tr("Booklet") }, 0, false, &layoutAccepted);
+    if (!layoutAccepted)
+        return;
+    const bool booklet = layout == tr("Booklet");
+    const int perSheet = layout == tr("2 side by side") || booklet ? 2 : layout == tr("4") ? 4 : 1;
+
     QPrinter printer(QPrinter::HighResolution);
     printer.setDocName(session->displayName());
     QPrintDialog dialog(&printer, this);
@@ -1650,6 +2202,26 @@ void MainWindow::printDocument()
     const int from = printer.fromPage() > 0 ? printer.fromPage() - 1 : 0;
     const int to = printer.toPage() > 0 ? printer.toPage() - 1 : session->pageCount() - 1;
 
+    QList<int> order;
+    if (!booklet) {
+        for (int index = from; index <= to; ++index)
+            order.append(index);
+    } else {
+        const int count = to - from + 1;
+        int padded = count;
+        while (padded % 4 != 0)
+            ++padded;
+        const auto map = [from, count](int logical) {
+            return logical >= 0 && logical < count ? from + logical : -1;
+        };
+        for (int sheet = 0; sheet < padded / 4; ++sheet) {
+            order.append(map(padded - 1 - 2 * sheet));
+            order.append(map(2 * sheet));
+            order.append(map(2 * sheet + 1));
+            order.append(map(padded - 2 - 2 * sheet));
+        }
+    }
+
     runWithProgress(tr("Printing %1…").arg(session->displayName()),
                     [&](const std::function<bool(int, int)> &progress) {
                         QPainter painter;
@@ -1659,38 +2231,44 @@ void MainWindow::printDocument()
                             return true;
                         }
 
-                        const int total = to - from + 1;
-                        for (int index = from; index <= to; ++index) {
-                            if (!progress(index - from, total)) {
+                        const int sheets = (order.size() + perSheet - 1) / perSheet;
+                        for (int sheet = 0; sheet < sheets; ++sheet) {
+                            if (!progress(sheet, sheets)) {
                                 painter.end();
                                 return false;
                             }
-
-                            auto page = session->document()->page(index);
-                            if (!page)
-                                continue;
-
-                            // Rendered at the printer's own resolution, then fitted
-                            // to the page rectangle so nothing is cropped.
                             const QRectF target = printer.pageRect(QPrinter::DevicePixel);
-                            const QSizeF pageSize = page->sizePoints();
-                            const qreal scale = qMin(target.width() / pageSize.width(),
-                                                     target.height() / pageSize.height());
-                            const QImage image = page->render(scale);
-                            if (!image.isNull()) {
-                                const QRectF where(
-                                    target.left() + (target.width() - image.width()) / 2.0,
-                                    target.top() + (target.height() - image.height()) / 2.0,
-                                    image.width(), image.height());
+                            const int columns = perSheet == 4 ? 2 : perSheet;
+                            const int rows = perSheet == 4 ? 2 : 1;
+                            const qreal cellW = target.width() / columns;
+                            const qreal cellH = target.height() / rows;
+                            for (int slot = 0; slot < perSheet; ++slot) {
+                                const int source = order.value(sheet * perSheet + slot, -1);
+                                if (source < 0)
+                                    continue;
+                                auto page = session->document()->page(source);
+                                if (!page)
+                                    continue;
+                                const QSizeF pageSize = page->sizePoints();
+                                const qreal scale = qMin(cellW / pageSize.width(), cellH / pageSize.height());
+                                const QImage image = page->render(scale);
+                                if (image.isNull())
+                                    continue;
+                                const int column = slot % columns;
+                                const int row = slot / columns;
+                                const QRectF cell(target.left() + column * cellW, target.top() + row * cellH,
+                                                  cellW, cellH);
+                                const QRectF where(cell.left() + (cell.width() - image.width()) / 2.0,
+                                                   cell.top() + (cell.height() - image.height()) / 2.0,
+                                                   image.width(), image.height());
                                 painter.drawImage(where, image);
                             }
-
-                            if (index < to)
+                            if (sheet + 1 < sheets)
                                 printer.newPage();
                         }
 
                         painter.end();
-                        report(tr("Sent %n page(s) to the printer.", nullptr, total));
+                        report(tr("Sent %n sheet(s) to the printer.", nullptr, sheets));
                         return true;
                     });
 }
@@ -1789,23 +2367,251 @@ void MainWindow::insertBlankPage()
     if (!session || !requireEditableDocument(true))
         return;
 
-    const int at = session->currentPage() + 1;
-    const QSizeF size = session->document()->pageSizePoints(session->currentPage());
+    const QSizeF current = session->document()->pageSizePoints(session->currentPage());
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Insert blank page"));
+    auto *form = new QFormLayout;
+    auto *paper = new QComboBox(&dialog);
+    paper->addItem(tr("Same as this page"), current.isEmpty() ? QSizeF(612, 792) : current);
+    paper->addItem(tr("A4"), QSizeF(595.28, 841.89));
+    paper->addItem(tr("A3"), QSizeF(841.89, 1190.55));
+    paper->addItem(tr("Letter"), QSizeF(612, 792));
+    paper->addItem(tr("Legal"), QSizeF(612, 1008));
+    paper->addItem(tr("Tabloid"), QSizeF(792, 1224));
+    auto *where = new QComboBox(&dialog);
+    where->addItem(tr("After the current page"), 1);
+    where->addItem(tr("Before the current page"), 0);
+    form->addRow(tr("Size"), paper);
+    form->addRow(tr("Place"), where);
+    auto *countBox = new QSpinBox(&dialog);
+    countBox->setRange(1, 200);
+    countBox->setValue(1);
+    form->addRow(tr("How many"), countBox);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel | QDialogButtonBox::Ok, &dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    auto *column = new QVBoxLayout(&dialog);
+    column->addLayout(form);
+    column->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
 
+    const QSizeF size = paper->currentData().toSizeF();
+    const int at = session->currentPage() + where->currentData().toInt();
+    const int count = countBox->value();
     QString error;
     const bool inserted = session->applyStructuralEdit(
         tr("Insert blank page"),
-        [at, size](core::PdfDocument &document) {
-            document.insertBlankPage(at, size.isEmpty() ? QSizeF(612, 792) : size);
+        [at, size, count](core::PdfDocument &document) {
+            for (int index = 0; index < count; ++index)
+                document.insertBlankPage(at + index, size);
         },
         &error);
 
     if (inserted) {
         session->setCurrentPage(at);
-        report(tr("Inserted a blank page after page %1.").arg(at));
+        report(tr("Inserted %n blank page(s).", nullptr, count));
     } else {
         reportError(tr("Could not insert a page"), error);
     }
+}
+
+void MainWindow::reversePages()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument(true))
+        return;
+    if (session->pageCount() < 2) {
+        report(tr("There is only one page."));
+        return;
+    }
+
+    QList<int> order;
+    for (int index = session->pageCount() - 1; index >= 0; --index)
+        order.append(index);
+
+    QString error;
+    if (session->applyStructuralEdit(
+            tr("Reverse pages"),
+            [order](core::PdfDocument &document) { document.reorderPages(order); }, &error))
+        report(tr("Page order reversed."));
+    else
+        reportError(tr("Could not reverse the pages"), error);
+}
+
+void MainWindow::rotateAllPages()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument(true))
+        return;
+
+    bool accepted = false;
+    const QString direction = QInputDialog::getItem(
+        this, tr("Rotate all pages"), tr("Direction:"), { tr("Right"), tr("Left") }, 0, false,
+        &accepted);
+    if (!accepted)
+        return;
+    const int degrees = direction == tr("Left") ? -90 : 90;
+    const int count = session->pageCount();
+    QString error;
+    if (session->applyStructuralEdit(
+            tr("Rotate all pages"),
+            [count, degrees](core::PdfDocument &document) {
+                for (int index = 0; index < count; ++index)
+                    document.setPageRotation(index, document.pageRotation(index) + degrees);
+            },
+            &error))
+        report(tr("Rotated every page."));
+    else
+        reportError(tr("Could not rotate the pages"), error);
+}
+
+void MainWindow::goToPage()
+{
+    auto *session = currentSession();
+    if (!session || !session->isLoaded())
+        return;
+
+    bool accepted = false;
+    const int page = QInputDialog::getInt(this, tr("Go to page"), tr("Page number:"),
+                                          session->currentPage() + 1, 1, session->pageCount(), 1,
+                                          &accepted);
+    if (accepted)
+        session->setCurrentPage(page - 1);
+}
+
+void MainWindow::copyPageImage()
+{
+    auto *session = currentSession();
+    if (!session || !session->isLoaded())
+        return;
+    auto page = session->document()->page(session->currentPage());
+    if (!page)
+        return;
+    const QImage image = page->render(2.0);
+    if (image.isNull()) {
+        reportError(tr("Could not copy the page"), tr("The page did not render."));
+        return;
+    }
+    QApplication::clipboard()->setImage(image);
+    report(tr("Page %1 copied as an image.").arg(session->currentPage() + 1));
+}
+
+void MainWindow::setPresentation(bool on)
+{
+    if (!currentSession() || !currentSession()->isLoaded())
+        return;
+    if (on == m_presenting)
+        return;
+    m_presenting = on;
+    for (QAction *key : m_presentKeys)
+        key->setEnabled(on);
+
+    if (on) {
+        if (m_ribbon)
+            m_ribbon->hide();
+        if (m_sidebar)
+            m_sidebar->hide();
+        if (m_inspector)
+            m_inspector->hide();
+        statusBar()->hide();
+        currentSession()->setZoomMode(core::ZoomMode::FitPage);
+        setWindowState(windowState() | Qt::WindowFullScreen);
+        report(tr("Presentation. Arrow keys turn the page. Esc leaves."));
+        return;
+    }
+
+    setWindowState(windowState() & ~Qt::WindowFullScreen);
+    if (QAction *fullScreen = action(QStringLiteral("fullScreen"))) {
+        const QSignalBlocker blocker(fullScreen);
+        fullScreen->setChecked(false);
+    }
+    showWelcomeIfEmpty();
+    applyLayoutMode(true);
+}
+
+void MainWindow::duplicateSelection()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument())
+        return;
+    if (session->selectedAnnotation() == 0) {
+        report(tr("Select a comment, shape or text box first."));
+        return;
+    }
+
+    for (const core::Annotation &annotation :
+         session->annotationsOnPage(session->selectedAnnotationPage())) {
+        if (annotation.objectNumber != session->selectedAnnotation() || !annotation.editable)
+            continue;
+        if (session->addAnnotation(copyOf(annotation, annotation.pageIndex, QPointF(16, 16)),
+                                   tr("Duplicate selection")))
+            report(tr("Duplicated the selection."));
+        return;
+    }
+    report(tr("That selection cannot be duplicated."));
+}
+
+void MainWindow::copySelectionAcrossPages()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument())
+        return;
+    if (session->selectedAnnotation() == 0) {
+        report(tr("Select a comment, shape or text box first."));
+        return;
+    }
+
+    core::Annotation selected;
+    bool found = false;
+    for (const core::Annotation &annotation :
+         session->annotationsOnPage(session->selectedAnnotationPage())) {
+        if (annotation.objectNumber == session->selectedAnnotation() && annotation.editable) {
+            selected = annotation;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        report(tr("That selection cannot be copied."));
+        return;
+    }
+
+    session->undoStack()->beginMacro(tr("Copy to all pages"));
+    int copied = 0;
+    for (int page = 0; page < session->pageCount(); ++page) {
+        if (page == selected.pageIndex)
+            continue;
+        if (session->addAnnotation(copyOf(selected, page, QPointF()), tr("Copy to all pages")))
+            ++copied;
+    }
+    session->undoStack()->endMacro();
+    report(tr("Copied onto %n other page(s).", nullptr, copied));
+}
+
+void MainWindow::clearDescription()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument())
+        return;
+
+    const auto choice = QMessageBox::question(
+        this, tr("Clear description"),
+        tr("Remove the title, author, subject and keywords stored in this PDF?"),
+        QMessageBox::Cancel | QMessageBox::Yes, QMessageBox::Cancel);
+    if (choice != QMessageBox::Yes)
+        return;
+
+    core::DocumentInfo info = session->document()->info();
+    info.title.clear();
+    info.author.clear();
+    info.subject.clear();
+    info.keywords.clear();
+    QString error;
+    if (session->setDocumentInfo(info, &error))
+        report(tr("Description cleared."));
+    else
+        reportError(tr("Could not clear the description"), error);
 }
 
 void MainWindow::insertPagesFromFile(int atPage)
@@ -1978,12 +2784,82 @@ void MainWindow::splitDocument()
     if (!session || !session->isLoaded() || !session->document()->isPdf())
         return;
 
-    bool accepted = false;
-    const int every = QInputDialog::getInt(this, tr("Split document"),
-                                           tr("Split into files of how many pages?"), 1, 1,
-                                           qMax(1, session->pageCount()), 1, &accepted);
-    if (!accepted)
+    bool modeAccepted = false;
+    const QString mode = QInputDialog::getItem(
+        this, tr("Split document"), tr("Split by:"),
+        { tr("Every N pages"), tr("Bookmark"), tr("File size") }, 0, false, &modeAccepted);
+    if (!modeAccepted)
         return;
+
+    QList<QList<int>> parts;
+    const int pageCount = session->pageCount();
+    if (mode == tr("Bookmark")) {
+        QList<int> starts;
+        for (const core::OutlineNode &node : session->document()->outline()) {
+            if (node.pageIndex >= 0)
+                starts.append(node.pageIndex);
+        }
+        starts.removeAll(-1);
+        std::sort(starts.begin(), starts.end());
+        starts.erase(std::unique(starts.begin(), starts.end()), starts.end());
+        if (starts.isEmpty() || starts.first() != 0)
+            starts.prepend(0);
+        for (int i = 0; i < starts.size(); ++i) {
+            const int end = i + 1 < starts.size() ? starts.at(i + 1) : pageCount;
+            QList<int> pages;
+            for (int page = starts.at(i); page < end; ++page)
+                pages.append(page);
+            if (!pages.isEmpty())
+                parts.append(pages);
+        }
+    } else if (mode == tr("File size")) {
+        bool accepted = false;
+        const int megabytes = QInputDialog::getInt(this, tr("Split document"),
+                                                   tr("Start a new file after about how many megabytes?"),
+                                                   5, 1, 200, 1, &accepted);
+        if (!accepted)
+            return;
+        const qint64 limit = qint64(megabytes) * 1024 * 1024;
+        int first = 0;
+        while (first < pageCount) {
+            int last = first;
+            while (last + 1 < pageCount) {
+                QList<int> trial;
+                for (int page = first; page <= last + 1; ++page)
+                    trial.append(page);
+                try {
+                    if (session->document()->extractPages(trial).size() > limit)
+                        break;
+                } catch (const std::exception &) {
+                    break;
+                }
+                ++last;
+            }
+            QList<int> pages;
+            for (int page = first; page <= last; ++page)
+                pages.append(page);
+            parts.append(pages);
+            first = last + 1;
+        }
+    } else {
+        bool accepted = false;
+        const int every = QInputDialog::getInt(this, tr("Split document"),
+                                               tr("Split into files of how many pages?"), 1, 1,
+                                               qMax(1, pageCount), 1, &accepted);
+        if (!accepted)
+            return;
+        for (int first = 0; first < pageCount; first += every) {
+            QList<int> pages;
+            for (int index = first; index < qMin(first + every, pageCount); ++index)
+                pages.append(index);
+            parts.append(pages);
+        }
+    }
+
+    if (parts.isEmpty()) {
+        report(tr("Nothing to split."));
+        return;
+    }
 
     const QString directory = QFileDialog::getExistingDirectory(
         this, tr("Where should the parts go?"), QFileInfo(session->filePath()).absolutePath());
@@ -1991,47 +2867,422 @@ void MainWindow::splitDocument()
         return;
 
     const QString base = QFileInfo(session->filePath()).completeBaseName();
-    const int pageCount = session->pageCount();
 
     runWithProgress(tr("Splitting %1…").arg(session->displayName()),
                     [&](const std::function<bool(int, int)> &progress) {
                         int part = 1;
-                        for (int first = 0; first < pageCount; first += every, ++part) {
-                            if (!progress(first, pageCount))
+                        for (const QList<int> &pages : parts) {
+                            if (!progress(part - 1, parts.size()))
                                 return false;
-
-                            QList<int> pages;
-                            for (int index = first; index < qMin(first + every, pageCount); ++index)
-                                pages.append(index);
 
                             const QString name = QStringLiteral("%1-%2.pdf")
                                                      .arg(base)
                                                      .arg(part, 3, 10, QLatin1Char('0'));
                             const QString path = QDir(directory).filePath(name);
                             try {
-                                const QByteArray bytes =
-                                    session->document()->extractPages(pages);
+                                const QByteArray bytes = session->document()->extractPages(pages);
                                 QSaveFile file(path);
                                 if (!file.open(QIODevice::WriteOnly)
                                     || file.write(bytes) != bytes.size() || !file.commit()) {
-                                    reportError(tr("Could not write the file"),
-                                                file.errorString());
+                                    reportError(tr("Could not write the file"), file.errorString());
                                     return true;
                                 }
                             } catch (const std::exception &failure) {
-                                reportError(tr("Could not split"),
-                                            QString::fromUtf8(failure.what()));
+                                reportError(tr("Could not split"), QString::fromUtf8(failure.what()));
                                 return true;
                             }
+                            ++part;
                         }
 
-                        report(tr("Split into %n file(s) in %1.", nullptr, part - 1)
-                                   .arg(directory));
+                        report(tr("Split into %n file(s) in %1.", nullptr, parts.size()).arg(directory));
                         return true;
                     });
 }
 
 // --- Tool commands ---------------------------------------------------------
+
+void MainWindow::replaceAllText()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument(true))
+        return;
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Replace all"));
+    auto *form = new QFormLayout;
+    auto *find = new QLineEdit(&dialog);
+    auto *replace = new QLineEdit(&dialog);
+    auto *matchCase = new QCheckBox(tr("Match case"), &dialog);
+    form->addRow(tr("Find"), find);
+    form->addRow(tr("Replace with"), replace);
+    form->addRow(QString(), matchCase);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel | QDialogButtonBox::Ok, &dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    auto *column = new QVBoxLayout(&dialog);
+    column->addLayout(form);
+    column->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted || find->text().isEmpty())
+        return;
+
+    struct Hit
+    {
+        int page = 0;
+        QList<QRectF> boxes;
+        QRectF area;
+    };
+    QList<Hit> hits;
+    const auto sensitivity = matchCase->isChecked() ? Qt::CaseSensitive : Qt::CaseInsensitive;
+    for (int pageIndex = 0; pageIndex < session->pageCount(); ++pageIndex) {
+        auto page = session->document()->page(pageIndex);
+        if (!page || !page->textLayer())
+            continue;
+        for (const core::TextRange &range :
+             page->textLayer()->findAll(find->text(), sensitivity, false)) {
+            const QList<QRectF> boxes = page->textLayer()->boxes(range);
+            if (boxes.isEmpty())
+                continue;
+            QRectF area = boxes.first();
+            for (const QRectF &box : boxes)
+                area = area.united(box);
+            hits.append({ pageIndex, boxes, area });
+        }
+    }
+    if (hits.isEmpty()) {
+        report(tr("No matches for “%1”.").arg(find->text()));
+        return;
+    }
+
+    const auto choice = QMessageBox::question(
+        this, tr("Replace all"),
+        tr("Replace %n occurrence(s)?", nullptr, hits.size()),
+        QMessageBox::Cancel | QMessageBox::Yes, QMessageBox::Yes);
+    if (choice != QMessageBox::Yes)
+        return;
+
+    const QString replacement = replace->text();
+    session->undoStack()->beginMacro(tr("Replace all"));
+    QString error;
+    const bool cleared = session->applyStructuralEdit(
+        tr("Remove old text"),
+        [hits](core::PdfDocument &document) {
+            QList<int> pages;
+            for (const Hit &hit : hits) {
+                core::AnnotationSpec mark;
+                mark.type = core::AnnotationType::Redact;
+                mark.pageIndex = hit.page;
+                mark.quads = hit.boxes;
+                mark.color = Qt::white;
+                core::annotations::add(document, mark);
+                if (!pages.contains(hit.page))
+                    pages.append(hit.page);
+            }
+            for (int page : pages)
+                document.applyRedactions(page);
+        },
+        &error);
+    if (!cleared) {
+        session->undoStack()->endMacro();
+        session->undoStack()->undo();
+        reportError(tr("Could not replace the text"), error);
+        return;
+    }
+
+    if (!replacement.trimmed().isEmpty()) {
+        for (const Hit &hit : hits) {
+            core::AnnotationSpec spec;
+            spec.type = core::AnnotationType::FreeText;
+            spec.pageIndex = hit.page;
+            spec.rect = hit.area.adjusted(-1, -1, 12, 1);
+            if (spec.rect.height() < 10)
+                spec.rect.setHeight(10);
+            spec.contents = replacement;
+            spec.fontSize = qBound(6.0, hit.area.height() * 0.82, 48.0);
+            spec.color = Qt::black;
+            spec.borderWidth = 0;
+            spec.opacity = 1;
+            spec.author = session->author();
+            session->addAnnotation(spec, tr("Type replacement"));
+        }
+    }
+    session->undoStack()->endMacro();
+    report(tr("Replaced %n occurrence(s).", nullptr, hits.size()));
+}
+
+void MainWindow::addHeaderFooter()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument())
+        return;
+
+    HeaderFooterDialog dialog(session->pageCount(), session->currentPage(), this);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    if (dialog.headerText().isEmpty() && dialog.footerText().isEmpty() && !dialog.pageNumbers()) {
+        report(tr("Nothing to add."));
+        return;
+    }
+
+    const auto expand = [](QString text, int page, int total) {
+        return text.replace(QStringLiteral("{n}"), QString::number(page))
+            .replace(QStringLiteral("{total}"), QString::number(total));
+    };
+
+    session->undoStack()->beginMacro(tr("Header and footer"));
+    const int total = session->pageCount();
+    for (int pageIndex = 0; pageIndex < total; ++pageIndex) {
+        if (!dialog.allPages() && pageIndex != session->currentPage())
+            continue;
+        const QSizeF size = session->document()->pageSizePoints(pageIndex);
+        const qreal font = dialog.fontSize();
+        const auto place = [&](const QString &text, qreal y) {
+            if (text.isEmpty())
+                return;
+            core::AnnotationSpec spec;
+            spec.type = core::AnnotationType::FreeText;
+            spec.pageIndex = pageIndex;
+            spec.rect = QRectF(36, y, size.width() - 72, font + 8);
+            spec.contents = text;
+            spec.fontSize = font;
+            spec.color = Qt::black;
+            spec.borderWidth = 0;
+            spec.opacity = 1;
+            spec.author = session->author();
+            session->addAnnotation(spec, tr("Header and footer"));
+        };
+        place(expand(dialog.headerText(), pageIndex + 1, total), 28);
+        QString footer = dialog.footerText();
+        if (dialog.pageNumbers()) {
+            const QString number = tr("Page %1 of %2").arg(pageIndex + 1).arg(total);
+            footer = footer.isEmpty() ? number : footer + QStringLiteral("  ") + number;
+        }
+        place(expand(footer, pageIndex + 1, total), size.height() - font - 36);
+    }
+    session->undoStack()->endMacro();
+    report(tr("Header and footer added."));
+}
+
+void MainWindow::cropCurrentPage()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument(true))
+        return;
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Crop page"));
+    auto *form = new QFormLayout;
+    const auto margin = [&dialog](const QString &label, QFormLayout *form) {
+        auto *box = new QSpinBox(&dialog);
+        box->setRange(0, 400);
+        box->setSuffix(QObject::tr(" pt"));
+        form->addRow(label, box);
+        return box;
+    };
+    auto *left = margin(tr("Left"), form);
+    auto *top = margin(tr("Top"), form);
+    auto *right = margin(tr("Right"), form);
+    auto *bottom = margin(tr("Bottom"), form);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel | QDialogButtonBox::Ok, &dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    auto *column = new QVBoxLayout(&dialog);
+    column->addLayout(form);
+    column->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    if (left->value() + right->value() + top->value() + bottom->value() == 0) {
+        report(tr("Enter a margin to crop."));
+        return;
+    }
+
+    QString error;
+    if (!session->cropPage(session->currentPage(), left->value(), top->value(), right->value(),
+                           bottom->value(), &error))
+        reportError(tr("Could not crop the page"), error);
+    else
+        report(tr("Cropped page %1.").arg(session->currentPage() + 1));
+}
+
+void MainWindow::manageLinks()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument())
+        return;
+
+    const int pageIndex = session->currentPage();
+    const QList<core::content::Link> links =
+        core::content::linksOnPage(*session->document(), pageIndex);
+    if (links.isEmpty()) {
+        report(tr("This page has no links."));
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Links on this page"));
+    dialog.resize(420, 320);
+    auto *list = new QListWidget(&dialog);
+    for (const core::content::Link &link : links) {
+        auto *item = new QListWidgetItem(link.uri, list);
+        item->setData(Qt::UserRole, link.rect);
+    }
+    auto *edit = new QPushButton(tr("Change address"), &dialog);
+    auto *remove = new QPushButton(tr("Delete"), &dialog);
+    auto *close = new QPushButton(tr("Close"), &dialog);
+    auto *buttons = new QHBoxLayout;
+    buttons->addWidget(edit);
+    buttons->addWidget(remove);
+    buttons->addStretch(1);
+    buttons->addWidget(close);
+    auto *column = new QVBoxLayout(&dialog);
+    column->addWidget(list);
+    column->addLayout(buttons);
+    QObject::connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
+    QObject::connect(remove, &QPushButton::clicked, &dialog, [&] {
+        auto *item = list->currentItem();
+        if (!item)
+            return;
+        const QRectF rect = item->data(Qt::UserRole).toRectF();
+        if (session->removeLinkAt(pageIndex, rect.center())) {
+            delete item;
+            report(tr("Link removed."));
+        }
+    });
+    QObject::connect(edit, &QPushButton::clicked, &dialog, [&] {
+        auto *item = list->currentItem();
+        if (!item)
+            return;
+        bool accepted = false;
+        const QString uri = QInputDialog::getText(&dialog, tr("Change link"), tr("Address:"),
+                                                  QLineEdit::Normal, item->text(), &accepted);
+        if (!accepted || uri.trimmed().isEmpty())
+            return;
+        const QRectF rect = item->data(Qt::UserRole).toRectF();
+        if (session->removeLinkAt(pageIndex, rect.center()) && session->addLink(pageIndex, rect, uri.trimmed()))
+            item->setText(uri.trimmed());
+    });
+    dialog.exec();
+}
+
+void MainWindow::addFormField()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument())
+        return;
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("New form field"));
+    auto *form = new QFormLayout;
+    auto *kind = new QComboBox(&dialog);
+    kind->addItem(tr("Text"), int(core::forms::NewFieldKind::Text));
+    kind->addItem(tr("Checkbox"), int(core::forms::NewFieldKind::Checkbox));
+    kind->addItem(tr("Dropdown"), int(core::forms::NewFieldKind::Combo));
+    auto *name = new QLineEdit(&dialog);
+    name->setPlaceholderText(tr("Field name"));
+    auto *choices = new QLineEdit(&dialog);
+    choices->setPlaceholderText(tr("Yes, No, Maybe"));
+    form->addRow(tr("Type"), kind);
+    form->addRow(tr("Name"), name);
+    form->addRow(tr("Choices"), choices);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel | QDialogButtonBox::Ok, &dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    auto *column = new QVBoxLayout(&dialog);
+    column->addLayout(form);
+    column->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted || name->text().trimmed().isEmpty())
+        return;
+
+    const auto fieldKind = static_cast<core::forms::NewFieldKind>(kind->currentData().toInt());
+    QStringList options;
+    if (fieldKind == core::forms::NewFieldKind::Combo) {
+        for (const QString &part : choices->text().split(QLatin1Char(','))) {
+            if (!part.trimmed().isEmpty())
+                options.append(part.trimmed());
+        }
+        if (options.isEmpty()) {
+            report(tr("A dropdown needs at least one choice."));
+            return;
+        }
+    }
+
+    const qreal height = fieldKind == core::forms::NewFieldKind::Checkbox ? 16 : 22;
+    const QRectF rect(72, 72, fieldKind == core::forms::NewFieldKind::Checkbox ? 16 : 180, height);
+    if (!session->addFormField(session->currentPage(), fieldKind, name->text().trimmed(), rect, options))
+        reportError(tr("Could not add the field"), tr("The document did not accept a new field."));
+    else
+        report(tr("Added %1. It is listed in the Forms panel.").arg(name->text().trimmed()));
+}
+
+void MainWindow::compareDocument()
+{
+    auto *session = currentSession();
+    if (!session || !session->isLoaded())
+        return;
+    CompareDialog dialog(session->document(), this);
+    dialog.exec();
+}
+
+void MainWindow::replyToSelection()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument())
+        return;
+    if (session->selectedAnnotation() == 0) {
+        report(tr("Select a comment first."));
+        return;
+    }
+
+    bool accepted = false;
+    const QString text = QInputDialog::getMultiLineText(this, tr("Reply"), tr("Reply:"), QString(),
+                                                        &accepted);
+    if (!accepted || text.trimmed().isEmpty())
+        return;
+
+    core::Annotation parent;
+    bool found = false;
+    for (const core::Annotation &annotation :
+         session->annotationsOnPage(session->selectedAnnotationPage())) {
+        if (annotation.objectNumber == session->selectedAnnotation()) {
+            parent = annotation;
+            found = true;
+            break;
+        }
+    }
+    if (!found)
+        return;
+
+    core::AnnotationSpec spec;
+    spec.type = core::AnnotationType::Note;
+    spec.pageIndex = parent.pageIndex;
+    spec.rect = QRectF(parent.rect.right() + 8, parent.rect.top(), 20, 20);
+    spec.contents = text.trimmed();
+    spec.author = session->author();
+    spec.color = session->markupColor();
+    spec.inReplyTo = parent.objectNumber;
+    if (session->addAnnotation(spec, tr("Reply")))
+        report(tr("Reply added."));
+}
+
+void MainWindow::chooseCustomStamp()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument())
+        return;
+
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Stamp image"), QString(),
+        tr("Images (*.png *.jpg *.jpeg *.webp *.bmp)"));
+    if (path.isEmpty())
+        return;
+    const QImage image(path);
+    if (image.isNull()) {
+        reportError(tr("Could not read the image"), path);
+        return;
+    }
+    session->setCustomStamp(image);
+    session->setTool(core::Tool::Stamp);
+    report(tr("Click the page to place the stamp."));
+}
 
 void MainWindow::compressDocument()
 {

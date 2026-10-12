@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/pdf/PdfAnnotations.h"
+#include "core/pdf/PdfDocument.h"
 
 #include <QByteArray>
 #include <QUndoCommand>
@@ -69,6 +70,42 @@ private:
     qreal m_newOpacity = 1.0;
     QString m_oldContents;
     QString m_newContents;
+};
+
+class MoveAnnotationCommand : public QUndoCommand
+{
+public:
+    MoveAnnotationCommand(DocumentSession *session, int pageIndex, int objectNumber, QRectF before,
+                          QRectF after, const QString &text);
+
+    void redo() override;
+    void undo() override;
+
+private:
+    DocumentSession *m_session = nullptr;
+    int m_pageIndex = -1;
+    int m_objectNumber = 0;
+    QRectF m_before;
+    QRectF m_after;
+};
+
+/// Rewrites the document description. Consecutive edits of the same file merge.
+class SetInfoCommand : public QUndoCommand
+{
+public:
+    SetInfoCommand(DocumentSession *session, DocumentInfo before, DocumentInfo after,
+                   const QString &text);
+
+    void redo() override;
+    void undo() override;
+
+    int id() const override { return 0x5A13; }
+    bool mergeWith(const QUndoCommand *other) override;
+
+private:
+    DocumentSession *m_session = nullptr;
+    DocumentInfo m_before;
+    DocumentInfo m_after;
 };
 
 /// Types a value into a form field. Filling in a form is an edit like any other,

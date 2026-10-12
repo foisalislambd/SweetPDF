@@ -3,6 +3,7 @@
 #include <QList>
 #include <QWidget>
 
+class QDoubleSpinBox;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
@@ -98,13 +99,17 @@ private:
     QLabel *m_selPage = nullptr;
     QLabel *m_selAuthor = nullptr;
     QLabel *m_selModified = nullptr;
-    QLabel *m_selGeometry = nullptr;
     QLabel *m_selExtra = nullptr;
     QPlainTextEdit *m_selContents = nullptr;
     QToolButton *m_selColor = nullptr;
     QSlider *m_selOpacity = nullptr;
     QLabel *m_selOpacityValue = nullptr;
     QLabel *m_selBorder = nullptr;
+    QDoubleSpinBox *m_selX = nullptr;
+    QDoubleSpinBox *m_selY = nullptr;
+    QDoubleSpinBox *m_selW = nullptr;
+    QDoubleSpinBox *m_selH = nullptr;
+    QPushButton *m_selReply = nullptr;
     QPushButton *m_selDelete = nullptr;
     QLabel *m_selStatus = nullptr;
 };

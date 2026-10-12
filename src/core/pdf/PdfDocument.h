@@ -13,6 +13,7 @@
 
 #include <mupdf/fitz.h>
 #include <mupdf/pdf.h>
+#include <mupdf/pdf/recolor.h>
 
 namespace sweet::core {
 
@@ -144,6 +145,9 @@ public:
     /// An empty one-page PDF, for "New document".
     static std::shared_ptr<PdfDocument> createEmpty(const QSizeF &pageSizePoints);
 
+    /// Recolors every page to gray. The page count and boxes stay the same.
+    void convertToGrayscale();
+
     /// True when `path` cannot be opened without a password.
     static bool needsPassword(const QString &path);
 
@@ -201,6 +205,9 @@ public:
 
     int pageRotation(int index) const;
     void setPageRotation(int index, int degrees);
+
+    /// Insets the page's crop box by the given margins, in points. PDF only.
+    void cropPage(int index, qreal left, qreal top, qreal right, qreal bottom);
 
     /// Removes pages, given in any order. Structural: re-open afterwards.
     void deletePages(QList<int> indices);

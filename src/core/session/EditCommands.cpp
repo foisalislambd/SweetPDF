@@ -1,5 +1,6 @@
 #include "core/session/EditCommands.h"
 
+#include "core/pdf/PdfDocument.h"
 #include "core/session/DocumentSession.h"
 
 #include <QCoreApplication>
@@ -155,6 +156,56 @@ bool SetFormValueCommand::mergeWith(const QUndoCommand *other)
         return false;
 
     m_newValue = next->m_newValue;
+    return true;
+}
+
+// --- Move and description --------------------------------------------------
+
+MoveAnnotationCommand::MoveAnnotationCommand(DocumentSession *session, int pageIndex,
+                                             int objectNumber, QRectF before, QRectF after,
+                                             const QString &text)
+    : QUndoCommand(text)
+    , m_session(session)
+    , m_pageIndex(pageIndex)
+    , m_objectNumber(objectNumber)
+    , m_before(before)
+    , m_after(after)
+{
+}
+
+void MoveAnnotationCommand::redo()
+{
+    m_session->applyAnnotationRect(m_pageIndex, m_objectNumber, m_after);
+}
+
+void MoveAnnotationCommand::undo()
+{
+    m_session->applyAnnotationRect(m_pageIndex, m_objectNumber, m_before);
+}
+
+SetInfoCommand::SetInfoCommand(DocumentSession *session, DocumentInfo before, DocumentInfo after,
+                               const QString &text)
+    : QUndoCommand(text)
+    , m_session(session)
+    , m_before(std::move(before))
+    , m_after(std::move(after))
+{
+}
+
+void SetInfoCommand::redo()
+{
+    m_session->applyDocumentInfo(m_after);
+}
+
+void SetInfoCommand::undo()
+{
+    m_session->applyDocumentInfo(m_before);
+}
+
+bool SetInfoCommand::mergeWith(const QUndoCommand *other)
+{
+    const auto *next = static_cast<const SetInfoCommand *>(other);
+    m_after = next->m_after;
     return true;
 }
 

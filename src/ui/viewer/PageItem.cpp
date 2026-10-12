@@ -149,6 +149,10 @@ void PageItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, 
         painter->setRenderHint(QPainter::SmoothPixmapTransform,
                                !qFuzzyCompare(m_bitmapScale, wanted));
         painter->drawImage(page, m_bitmap);
+        if (m_session->nightMode()) {
+            painter->setCompositionMode(QPainter::CompositionMode_Difference);
+            painter->fillRect(page, Qt::white);
+        }
         painter->restore();
     } else {
         // Placeholder while the first bitmap is on its way: a very light page

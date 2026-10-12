@@ -50,6 +50,8 @@ public:
 
 public Q_SLOTS:
     void openFileDialog();
+    void newDocument();
+    void newDocumentFromImages();
     void closeCurrentDocument();
 
     /// Runs one of the tasks offered by the home screen. `taskId` is an action id,
@@ -73,6 +75,21 @@ public Q_SLOTS:
     void saveEmbeddedFile(int index);
     void mergeDocuments();
     void splitDocument();
+    void reversePages();
+    void rotateAllPages();
+    void deleteOddOrEvenPages();
+    void convertToGrayscale();
+    void removeAllComments();
+    void exportComments();
+    void showDocumentStats();
+    void reloadDocument();
+    void revealDocument();
+    void goToPage();
+    void copyPageImage();
+    void setPresentation(bool on);
+    void duplicateSelection();
+    void copySelectionAcrossPages();
+    void clearDescription();
 
     // --- Content ---------------------------------------------------------
     void addImageToPage();
@@ -83,6 +100,14 @@ public Q_SLOTS:
     void replaceSelectedTextWith(const QString &replacement);
     void replaceSelectedTextWith(const QString &replacement, int pageIndex,
                                  const QList<QRectF> &boxes);
+    void replaceAllText();
+    void addHeaderFooter();
+    void cropCurrentPage();
+    void manageLinks();
+    void addFormField();
+    void compareDocument();
+    void replyToSelection();
+    void chooseCustomStamp();
 
     // --- Tools -----------------------------------------------------------
     void compressDocument();
@@ -119,6 +144,8 @@ private:
     void updateForCurrentDocument();
     void updateWindowTitleFromSession();
     void showWelcomeIfEmpty();
+    void finishOpening(sweet::core::DocumentSession *session, const QString &path, bool remember);
+    void prepareNewSession(sweet::core::DocumentSession *session);
 
     LayoutMode layoutModeForWidth(int width) const;
     void applyLayoutMode(bool force = false);
@@ -184,6 +211,8 @@ private:
 
     QHash<QString, QAction *> m_actions;
     QList<QAction *> m_documentActions; ///< Enabled only while a document is open.
+    QList<QAction *> m_presentKeys;
+    bool m_presenting = false;
 
     LayoutMode m_layoutMode = LayoutMode::Comfortable;
     bool m_layoutModeReady = false;

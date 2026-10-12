@@ -183,6 +183,26 @@ std::shared_ptr<PdfDocument> PdfDocument::createEmpty(const QSizeF &pageSizePoin
     return created;
 }
 
+void PdfDocument::convertToGrayscale()
+{
+    pdf_document *pdf = requirePdf();
+    fz_context *ctx = MuContext::forThread();
+    pdf_recolor_options options{};
+    options.num_comp = 1;
+
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_try(ctx) {
+            for (int index = 0; index < m_pageCount; ++index)
+                pdf_recolor_page(ctx, pdf, index, &options);
+        }
+        fz_catch(ctx)
+            MuContext::raise(ctx, QStringLiteral("Could not convert the document to grayscale"));
+    }
+    markEdited();
+    discardPageCaches(-1);
+}
+
 bool PdfDocument::needsPassword(const QString &path)
 {
     fz_context *ctx = MuContext::forThread();
@@ -570,6 +590,43 @@ void PdfDocument::setPageRotation(int index, int degrees)
     updateCachedPageSize(index);
 }
 
+void PdfDocument::cropPage(int index, qreal left, qreal top, qreal right, qreal bottom)
+{
+    pdf_document *pdf = requirePdf();
+    if (index < 0 || index >= m_pageCount)
+        throw MuError(QStringLiteral("That page is not in the document"));
+
+    fz_context *ctx = MuContext::forThread();
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_try(ctx) {
+            pdf_obj *pageObject = pdf_lookup_page_obj(ctx, pdf, index);
+            fz_rect box = pdf_dict_get_rect(ctx, pageObject, PDF_NAME(CropBox));
+            if (fz_is_empty_rect(box))
+                box = pdf_dict_get_rect(ctx, pageObject, PDF_NAME(MediaBox));
+            box.x0 += float(left);
+            box.x1 -= float(right);
+            box.y0 += float(bottom);
+            box.y1 -= float(top);
+            if (box.x1 - box.x0 < 36.0f || box.y1 - box.y0 < 36.0f)
+                fz_throw(ctx, FZ_ERROR_ARGUMENT, "crop leaves less than half an inch of page");
+            pdf_dict_put_rect(ctx, pageObject, PDF_NAME(CropBox), box);
+        }
+        fz_catch(ctx)
+            MuContext::raise(ctx, QStringLiteral("Could not crop page %1").arg(index + 1));
+    }
+    markEdited();
+    discardPageCaches(index);
+    {
+        const std::lock_guard<std::mutex> guard(m_pageMutex);
+        if (index < m_pages.size()) {
+            if (auto cached = m_pages.at(index).lock())
+                cached->refreshBounds();
+        }
+    }
+    updateCachedPageSize(index);
+}
+
 void PdfDocument::deletePages(QList<int> indices)
 {
     pdf_document *pdf = requirePdf();
@@ -595,6 +652,9 @@ void PdfDocument::deletePages(QList<int> indices)
             MuContext::raise(ctx, QStringLiteral("Could not delete the selected pages"));
     }
     markEdited();
+    // The page tree has already shrunk. Later edits in the same call (and the
+    // bounds check above, on a second call) must see the new count.
+    refreshStructure();
 }
 
 void PdfDocument::insertBlankPage(int at, const QSizeF &sizePoints)
@@ -619,6 +679,9 @@ void PdfDocument::insertBlankPage(int at, const QSizeF &sizePoints)
             MuContext::raise(ctx, QStringLiteral("Could not insert a page"));
     }
     markEdited();
+    // Several pages are often inserted in one edit. Clamping the next index
+    // against the old count would drop them in the wrong place.
+    refreshStructure();
 }
 
 void PdfDocument::movePage(int from, int to)

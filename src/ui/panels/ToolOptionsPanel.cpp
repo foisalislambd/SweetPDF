@@ -184,12 +184,15 @@ void ToolOptionsPanel::rebuild()
         delete item;
     }
     m_swatches.clear();
+    m_fillSwatches.clear();
     m_endingButtons.clear();
     m_stampButtons.clear();
     m_opacity = nullptr;
     m_opacityValue = nullptr;
     m_borderWidth = nullptr;
     m_borderWidthValue = nullptr;
+    m_fontSize = nullptr;
+    m_fontSizeValue = nullptr;
 
     const ToolInfo *info = infoFor(m_tool);
     m_hasOptions = info != nullptr;
@@ -216,6 +219,10 @@ void ToolOptionsPanel::rebuild()
         m_body->addWidget(buildOpacityRow(this));
     if (info->border)
         m_body->addWidget(buildBorderWidthRow(this));
+    if (m_tool == Tool::Shape || m_tool == Tool::Ellipse)
+        m_body->addWidget(buildFillRow(this));
+    if (m_tool == Tool::AddText)
+        m_body->addWidget(buildFontSizeRow(this));
     if (m_tool == Tool::Arrow)
         m_body->addWidget(buildArrowEndingRow(this));
 
@@ -346,6 +353,82 @@ QWidget *ToolOptionsPanel::buildBorderWidthRow(QWidget *parent)
     return holder;
 }
 
+QWidget *ToolOptionsPanel::buildFillRow(QWidget *parent)
+{
+    auto *holder = new QWidget(parent);
+    auto *column = new QVBoxLayout(holder);
+    column->setContentsMargins(0, 0, 0, 0);
+    column->setSpacing(4);
+
+    auto *caption = new QLabel(tr("Fill"), holder);
+    caption->setObjectName(QStringLiteral("SectionLabel"));
+    column->addWidget(caption);
+
+    auto *row = new QHBoxLayout;
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(4);
+
+    auto *none = new QToolButton(holder);
+    none->setObjectName(QStringLiteral("ToolChip"));
+    none->setCheckable(true);
+    none->setAutoRaise(true);
+    none->setText(tr("None"));
+    none->setToolTip(tr("No fill"));
+    connect(none, &QToolButton::clicked, this, [this] {
+        if (m_session)
+            m_session->setMarkupFill(QColor());
+    });
+    row->addWidget(none);
+    m_fillSwatches.append(none);
+
+    for (const QColor &colour : presetColours()) {
+        auto *swatch = new QToolButton(holder);
+        swatch->setObjectName(QStringLiteral("ColourSwatch"));
+        swatch->setCheckable(true);
+        swatch->setAutoRaise(true);
+        swatch->setIconSize(QSize(swatchSize, swatchSize));
+        swatch->setProperty("sweetColour", colour);
+        connect(swatch, &QToolButton::clicked, this, [this, colour] {
+            if (m_session)
+                m_session->setMarkupFill(colour);
+        });
+        row->addWidget(swatch);
+        m_fillSwatches.append(swatch);
+    }
+    row->addStretch(1);
+    column->addLayout(row);
+    return holder;
+}
+
+QWidget *ToolOptionsPanel::buildFontSizeRow(QWidget *parent)
+{
+    auto *holder = new QWidget(parent);
+    auto *column = new QVBoxLayout(holder);
+    column->setContentsMargins(0, 0, 0, 0);
+    column->setSpacing(4);
+
+    auto *heading = new QHBoxLayout;
+    auto *caption = new QLabel(tr("Size"), holder);
+    caption->setObjectName(QStringLiteral("SectionLabel"));
+    heading->addWidget(caption, 1);
+    m_fontSizeValue = new QLabel(holder);
+    m_fontSizeValue->setFont(themeFont(TextRole::Caption));
+    heading->addWidget(m_fontSizeValue);
+    column->addLayout(heading);
+
+    m_fontSize = new QSlider(Qt::Horizontal, holder);
+    m_fontSize->setRange(8, 48);
+    m_fontSize->setToolTip(tr("Size of new text boxes"));
+    connect(m_fontSize, &QSlider::valueChanged, this, [this](int value) {
+        if (m_fontSizeValue)
+            m_fontSizeValue->setText(tr("%1 pt").arg(value));
+        if (m_session)
+            m_session->setMarkupFontSize(value);
+    });
+    column->addWidget(m_fontSize);
+    return holder;
+}
+
 QWidget *ToolOptionsPanel::buildShapePresets(QWidget *parent)
 {
     auto *holder = new QWidget(parent);
@@ -471,6 +554,13 @@ QWidget *ToolOptionsPanel::buildStampPresets(QWidget *parent)
         ++index;
     }
     column->addLayout(grid);
+
+    auto *custom = new QPushButton(tr("From image…"), holder);
+    custom->setProperty(iconNameProperty, QStringLiteral("add-image"));
+    custom->setCursor(Qt::PointingHandCursor);
+    connect(custom, &QPushButton::clicked, this,
+            [this] { Q_EMIT commandRequested(QStringLiteral("customStamp")); });
+    column->addWidget(custom);
     return holder;
 }
 
@@ -515,6 +605,26 @@ void ToolOptionsPanel::applyStyleFromSession()
                 tr("%1 pt").arg(m_session->markupBorderWidth(), 0, 'f', 1));
     }
 
+    if (m_fontSize) {
+        const int points = qRound(m_session->markupFontSize());
+        QSignalBlocker blocker(m_fontSize);
+        m_fontSize->setValue(points);
+        if (m_fontSizeValue)
+            m_fontSizeValue->setText(tr("%1 pt").arg(points));
+    }
+
+    const QColor fill = m_session->markupFill();
+    for (QToolButton *swatch : m_fillSwatches) {
+        const QColor colour = swatch->property("sweetColour").value<QColor>();
+        if (!colour.isValid()) {
+            swatch->setChecked(!fill.isValid());
+            continue;
+        }
+        const bool selected = fill.isValid() && colour.rgb() == fill.rgb();
+        swatch->setChecked(selected);
+        swatch->setIcon(swatchPixmap(colour, selected));
+    }
+
     const LineEnding ending = m_session->lineEndStyle();
     for (QToolButton *button : m_endingButtons) {
         const auto style = static_cast<LineEnding>(button->property("sweetLineEnding").toInt());
@@ -522,9 +632,10 @@ void ToolOptionsPanel::applyStyleFromSession()
     }
 
     const QString stamp = m_session->stampIconName();
+    const bool custom = !m_session->customStamp().isNull();
     for (QToolButton *button : m_stampButtons) {
         const QString name = button->property("sweetStampName").toString();
-        button->setChecked(name == stamp);
+        button->setChecked(!custom && name == stamp);
     }
 }
 

@@ -50,6 +50,8 @@ private:
     QWidget *buildColourRow(QWidget *parent);
     QWidget *buildOpacityRow(QWidget *parent);
     QWidget *buildBorderWidthRow(QWidget *parent);
+    QWidget *buildFillRow(QWidget *parent);
+    QWidget *buildFontSizeRow(QWidget *parent);
     QWidget *buildShapePresets(QWidget *parent);
     QWidget *buildArrowEndingRow(QWidget *parent);
     QWidget *buildStampPresets(QWidget *parent);
@@ -68,7 +70,10 @@ private:
     QLabel *m_opacityValue = nullptr;
     QSlider *m_borderWidth = nullptr;
     QLabel *m_borderWidthValue = nullptr;
+    QSlider *m_fontSize = nullptr;
+    QLabel *m_fontSizeValue = nullptr;
     QList<QToolButton *> m_swatches;
+    QList<QToolButton *> m_fillSwatches;
     QList<QToolButton *> m_endingButtons;
     QList<QToolButton *> m_stampButtons;
 };

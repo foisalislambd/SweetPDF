@@ -66,6 +66,13 @@ QList<FormField> onPage(const PdfDocument &document, int pageIndex);
 /// True when the document has at least one widget, i.e. it is a form.
 bool hasFields(const PdfDocument &document);
 
+enum class NewFieldKind { Text, Checkbox, Combo };
+
+/// Adds a widget to the page and to the document's AcroForm. `choices` is the
+/// option list for a combo box. The rectangle is in unrotated page points.
+bool createField(PdfDocument &document, int pageIndex, NewFieldKind kind, const QString &name,
+                 const QRectF &rect, const QStringList &choices);
+
 /// Writes a new value. Checkboxes and radio buttons take "Off" or their on
 /// state; text and choice fields take the text as typed. Returns false when the
 /// field is missing, read-only, or the document's own validation script rejects

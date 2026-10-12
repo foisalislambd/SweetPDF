@@ -332,4 +332,93 @@ QString displayName(FieldType type)
     return QCoreApplication::translate("FormField", "Field");
 }
 
+bool createField(PdfDocument &document, int pageIndex, NewFieldKind kind, const QString &name,
+                 const QRectF &rect, const QStringList &choices)
+{
+    document.ensureStructure();
+    pdf_document *pdf = document.pdfHandle();
+    if (!pdf || name.trimmed().isEmpty() || rect.isEmpty() || pageIndex < 0
+        || pageIndex >= document.pageCount()) {
+        return false;
+    }
+
+    fz_context *ctx = MuContext::forThread();
+    const QByteArray fieldName = name.trimmed().toUtf8();
+    bool created = false;
+    bool began = false;
+
+    {
+        const std::lock_guard<std::mutex> guard(document.parseMutex());
+        pdf_page *page = nullptr;
+        pdf_annot *annot = nullptr;
+        fz_var(page);
+        fz_var(annot);
+        fz_try(ctx) {
+            page = pdf_load_page(ctx, pdf, pageIndex);
+            pdf_begin_operation(ctx, pdf, "Create field");
+            began = true;
+            annot = pdf_create_annot_raw(ctx, page, PDF_ANNOT_WIDGET);
+            pdf_obj *obj = pdf_annot_obj(ctx, annot);
+            pdf_obj *root = pdf_dict_get(ctx, pdf_trailer(ctx, pdf), PDF_NAME(Root));
+            pdf_obj *acroform = pdf_dict_get(ctx, root, PDF_NAME(AcroForm));
+            if (!acroform) {
+                acroform = pdf_new_dict(ctx, pdf, 2);
+                pdf_dict_put_drop(ctx, root, PDF_NAME(AcroForm), acroform);
+            }
+            pdf_obj *fields = pdf_dict_get(ctx, acroform, PDF_NAME(Fields));
+            if (!fields) {
+                fields = pdf_new_array(ctx, pdf, 1);
+                pdf_dict_put_drop(ctx, acroform, PDF_NAME(Fields), fields);
+            }
+
+            pdf_set_annot_rect(ctx, annot, toFzRect(rect));
+            pdf_dict_put_int(ctx, obj, PDF_NAME(F), PDF_ANNOT_IS_PRINT);
+            pdf_dict_put_text_string(ctx, obj, PDF_NAME(T), fieldName.constData());
+            pdf_dict_put_text_string(ctx, obj, PDF_NAME(DA), "/Helv 12 Tf 0 g");
+
+            if (kind == NewFieldKind::Checkbox) {
+                pdf_dict_put(ctx, obj, PDF_NAME(FT), PDF_NAME(Btn));
+                pdf_dict_put_name(ctx, obj, PDF_NAME(V), "Off");
+                pdf_dict_put_name(ctx, obj, PDF_NAME(AS), "Off");
+            } else if (kind == NewFieldKind::Combo) {
+                pdf_dict_put(ctx, obj, PDF_NAME(FT), PDF_NAME(Ch));
+                pdf_dict_put_int(ctx, obj, PDF_NAME(Ff), PDF_CH_FIELD_IS_COMBO);
+                pdf_obj *options = pdf_new_array(ctx, pdf, choices.size());
+                for (const QString &choice : choices) {
+                    const QByteArray utf8 = choice.toUtf8();
+                    pdf_array_push_text_string(ctx, options, utf8.constData());
+                }
+                pdf_dict_put_drop(ctx, obj, PDF_NAME(Opt), options);
+            } else {
+                pdf_dict_put(ctx, obj, PDF_NAME(FT), PDF_NAME(Tx));
+                pdf_dict_put_text_string(ctx, obj, PDF_NAME(V), "");
+            }
+
+            pdf_array_push(ctx, fields, obj);
+            pdf_update_annot(ctx, annot);
+            pdf_end_operation(ctx, pdf);
+            created = true;
+        }
+        fz_always(ctx) {
+            if (created)
+                pdf_drop_annot(ctx, annot);
+            else if (began)
+                pdf_abandon_operation(ctx, pdf);
+            if (!created && annot)
+                pdf_delete_annot(ctx, page, annot);
+            fz_drop_page(ctx, reinterpret_cast<fz_page *>(page));
+        }
+        fz_catch(ctx) {
+            qCWarning(lcPdf) << "Could not create the form field:" << MuContext::lastError(ctx);
+            return false;
+        }
+    }
+
+    if (created) {
+        if (auto page = document.page(pageIndex))
+            page->discardDisplayList();
+    }
+    return created;
+}
+
 } // namespace sweet::core::forms

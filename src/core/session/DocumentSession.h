@@ -6,6 +6,7 @@
 #include "core/pdf/PdfForms.h"
 #include "core/render/RenderQueue.h"
 
+#include <QImage>
 #include <QObject>
 #include <QString>
 #include <QUndoStack>
@@ -66,6 +67,12 @@ public:
     /// Opens `path` into this session. Returns false and reports the reason
     /// through `errorMessage` instead of throwing.
     bool load(const QString &path, const QString &password, QString *errorMessage);
+
+    /// Replaces the session contents with a document created in memory, such as
+    /// a new blank file. An empty path is shown as Untitled.
+    void takeDocument(std::shared_ptr<PdfDocument> document, const QString &path);
+
+    bool convertToGrayscale(QString *errorMessage = nullptr);
 
     const std::shared_ptr<PdfDocument> &document() const noexcept { return m_document; }
     RenderQueue *renderQueue() noexcept { return m_renderQueue; }
@@ -130,6 +137,17 @@ public:
     void setMarkupOpacity(qreal opacity);
     qreal markupBorderWidth() const noexcept { return m_markupBorderWidth; }
     void setMarkupBorderWidth(qreal width);
+    /// Fill for new rectangles and ellipses. Invalid means no fill.
+    QColor markupFill() const noexcept { return m_markupFill; }
+    void setMarkupFill(const QColor &color);
+    qreal markupFontSize() const noexcept { return m_markupFontSize; }
+    void setMarkupFontSize(qreal points);
+    /// Picture placed by the stamp tool. Null means a named stamp (Draft, …).
+    QImage customStamp() const { return m_customStamp; }
+    void setCustomStamp(const QImage &image);
+    /// Darkens the page image for reading. It is not written into the file.
+    bool nightMode() const noexcept { return m_nightMode; }
+    void setNightMode(bool on);
     LineEnding lineEndStyle() const noexcept { return m_lineEndStyle; }
     void setLineEndStyle(LineEnding style);
     QString stampIconName() const noexcept { return m_stampIconName; }
@@ -142,11 +160,22 @@ public:
     /// Places `image` on `pageIndex` inside `rect` (page points) as an undoable
     /// step. Used by Add Image and by Sign.
     bool addImage(int pageIndex, const QImage &image, const QRectF &rect,
-                  const QString &commandText = QString());
+                  const QString &commandText = QString(), QString *errorMessage = nullptr);
 
     /// Adds a link over `rect`. `uri` is an external URL or an internal
     /// destination from `content::internalUri`.
     bool addLink(int pageIndex, const QRectF &rect, const QString &uri);
+    bool removeLinkAt(int pageIndex, const QPointF &at);
+
+    /// Moves or resizes an annotation, as one undo step.
+    bool setAnnotationRect(int pageIndex, int objectNumber, const QRectF &rect);
+
+    bool addFormField(int pageIndex, forms::NewFieldKind kind, const QString &name,
+                      const QRectF &rect, const QStringList &choices);
+
+    /// Crops one page by margins measured in points from its current edges.
+    bool cropPage(int pageIndex, qreal left, qreal top, qreal right, qreal bottom,
+                  QString *errorMessage = nullptr);
 
     // --- Forms ------------------------------------------------------------
 
@@ -182,6 +211,8 @@ public:
     bool deleteAnnotation(int pageIndex, int objectNumber);
     bool changeAnnotation(int pageIndex, int objectNumber, const QColor &color, qreal opacity,
                           const QString &contents);
+    bool applyDocumentInfo(const DocumentInfo &info);
+    bool applyAnnotationRect(int pageIndex, int objectNumber, const QRectF &rect);
     void restoreDocumentBytes(const QByteArray &bytes);
 
 public Q_SLOTS:
@@ -222,6 +253,7 @@ Q_SIGNALS:
 
     void selectedAnnotationChanged(int pageIndex, int objectNumber);
     void markupStyleChanged();
+    void nightModeChanged(bool on);
     void savedTo(const QString &path);
 
     /// A one-shot note about the document, such as a structure repair.
@@ -252,6 +284,10 @@ private:
     QColor m_markupColor = QColor(0xFF, 0xDD, 0x4A);
     qreal m_markupOpacity = 0.45;
     qreal m_markupBorderWidth = 1.5;
+    QColor m_markupFill;
+    qreal m_markupFontSize = 12.0;
+    QImage m_customStamp;
+    bool m_nightMode = false;
     LineEnding m_lineEndStyle = LineEnding::OpenArrow;
     QString m_stampIconName = QStringLiteral("Draft");
     QString m_author;
