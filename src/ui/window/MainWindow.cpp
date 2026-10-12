@@ -1164,7 +1164,7 @@ void MainWindow::createStatusBar()
 {
     auto *bar = statusBar();
     bar->setSizeGripEnabled(true);
-    bar->setContentsMargins(6, 0, 6, 0);
+    bar->setContentsMargins(4, 0, 4, 0);
 
     const auto addButton = [this, bar](const QString &id, bool permanent) {
         auto *button = new QToolButton(bar);

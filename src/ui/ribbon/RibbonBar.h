@@ -6,6 +6,7 @@
 class QAction;
 class QButtonGroup;
 class QHBoxLayout;
+class QShowEvent;
 class QStackedWidget;
 class QToolButton;
 class QVBoxLayout;
@@ -94,8 +95,10 @@ Q_SIGNALS:
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
+    void showEvent(QShowEvent *event) override;
 
 private:
+    void fitToCurrentPage();
     QHBoxLayout *m_leadingLayout = nullptr;
     QHBoxLayout *m_tabsLayout = nullptr;
     QHBoxLayout *m_trailingLayout = nullptr;

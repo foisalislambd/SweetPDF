@@ -12,6 +12,7 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QShowEvent>
 #include <QStackedWidget>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -53,6 +54,7 @@ QToolButton *makeButton(QAction *action, bool large)
     } else {
         button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         button->setIconSize(QSize(compactIconSize, compactIconSize));
+        button->setFixedHeight(22);
         button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     }
 
@@ -67,7 +69,7 @@ QFrame *makeGroupSeparator(QWidget *parent)
     line->setObjectName(QStringLiteral("RibbonGroupSeparator"));
     line->setFrameShape(QFrame::NoFrame);
     line->setFixedWidth(1);
-    line->setMinimumHeight(56);
+    line->setMinimumHeight(44);
     line->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
     return line;
 }
@@ -81,8 +83,8 @@ RibbonGroup::RibbonGroup(const QString &title, QWidget *parent)
         setAccessibleName(title);
 
     auto *column = new QVBoxLayout(this);
-    column->setContentsMargins(6, 4, 6, 2);
-    column->setSpacing(2);
+    column->setContentsMargins(4, 1, 4, 0);
+    column->setSpacing(0);
 
     auto *content = new QWidget(this);
     m_row = new QHBoxLayout(content);
@@ -102,6 +104,7 @@ RibbonGroup::RibbonGroup(const QString &title, QWidget *parent)
 QToolButton *RibbonGroup::addAction(QAction *action)
 {
     m_compactColumn = nullptr;
+    m_compactCount = 0;
     QToolButton *button = makeButton(action, true);
     m_row->addWidget(button, 0, Qt::AlignVCenter);
     return button;
@@ -111,24 +114,26 @@ void RibbonGroup::addCompactColumn()
 {
     m_compactColumn = new QVBoxLayout;
     m_compactColumn->setContentsMargins(0, 0, 0, 0);
-    m_compactColumn->setSpacing(2);
-    m_compactColumn->addStretch(1);
+    m_compactColumn->setSpacing(0);
+    m_compactCount = 0;
     m_row->addLayout(m_compactColumn);
 }
 
 QToolButton *RibbonGroup::addCompactAction(QAction *action)
 {
-    if (!m_compactColumn)
+    if (!m_compactColumn || m_compactCount >= compactRows)
         addCompactColumn();
+    ++m_compactCount;
 
     QToolButton *button = makeButton(action, false);
-    m_compactColumn->insertWidget(m_compactColumn->count() - 1, button);
+    m_compactColumn->addWidget(button);
     return button;
 }
 
 void RibbonGroup::addSeparator()
 {
     m_compactColumn = nullptr;
+    m_compactCount = 0;
     m_row->addSpacing(4);
     m_row->addWidget(makeGroupSeparator(this));
     m_row->addSpacing(4);
@@ -137,6 +142,7 @@ void RibbonGroup::addSeparator()
 void RibbonGroup::addWidget(QWidget *widget)
 {
     m_compactColumn = nullptr;
+    m_compactCount = 0;
     m_row->addWidget(widget, 0, Qt::AlignVCenter);
 }
 
@@ -158,13 +164,14 @@ RibbonPage::RibbonPage(QWidget *parent)
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scroll->setFocusPolicy(Qt::NoFocus);
+    scroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     outer->addWidget(scroll);
 
     auto *content = new QWidget(scroll);
     content->setObjectName(QStringLiteral("RibbonPageContent"));
-    content->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
+    content->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
     m_row = new QHBoxLayout(content);
-    m_row->setContentsMargins(8, 2, 8, 2);
+    m_row->setContentsMargins(6, 1, 6, 0);
     m_row->setSpacing(0);
     m_row->setAlignment(Qt::AlignVCenter);
 
@@ -212,7 +219,7 @@ RibbonBar::RibbonBar(QWidget *parent)
     auto *tabStrip = new QWidget(this);
     tabStrip->setObjectName(QStringLiteral("RibbonTabStrip"));
     auto *stripLayout = new QHBoxLayout(tabStrip);
-    stripLayout->setContentsMargins(10, 0, 10, 0);
+    stripLayout->setContentsMargins(8, 0, 8, 0);
     stripLayout->setSpacing(2);
     column->addWidget(tabStrip);
 
@@ -234,7 +241,9 @@ RibbonBar::RibbonBar(QWidget *parent)
 
     m_pages = new QStackedWidget(this);
     m_pages->setObjectName(QStringLiteral("RibbonPages"));
+    m_pages->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     column->addWidget(m_pages);
+    connect(&Theme::instance(), &Theme::changed, this, [this] { fitToCurrentPage(); });
 
     m_tabs = new QButtonGroup(this);
     m_tabs->setExclusive(true);
@@ -277,6 +286,7 @@ RibbonPage *RibbonBar::addPage(const QString &title)
         tab->setChecked(true);
         m_pages->setCurrentIndex(0);
     }
+    fitToCurrentPage();
     return page;
 }
 
@@ -303,7 +313,25 @@ void RibbonBar::setCurrentIndex(int index)
     m_pages->setCurrentIndex(index);
     if (auto *button = m_tabs->button(index))
         button->setChecked(true);
+    fitToCurrentPage();
     Q_EMIT currentIndexChanged(index);
+}
+
+void RibbonBar::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+    fitToCurrentPage();
+}
+
+void RibbonBar::fitToCurrentPage()
+{
+    QWidget *page = m_pages->currentWidget();
+    if (!page || m_collapsed)
+        return;
+    page->ensurePolished();
+    const int height = page->sizeHint().height();
+    if (height > 0 && m_pages->height() != height)
+        m_pages->setFixedHeight(height);
 }
 
 void RibbonBar::setCollapsed(bool collapsed)
@@ -312,6 +340,8 @@ void RibbonBar::setCollapsed(bool collapsed)
         return;
     m_collapsed = collapsed;
     m_pages->setVisible(!collapsed);
+    if (!collapsed)
+        fitToCurrentPage();
     Q_EMIT collapsedChanged(collapsed);
 }
 

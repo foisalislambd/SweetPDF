@@ -14,7 +14,7 @@
 namespace sweet::ui {
 namespace {
 
-constexpr int bottomMargin = 18;
+constexpr int bottomMargin = 10;
 constexpr int sideMargin = 16;
 
 const QList<int> zoomPresets = { 25, 50, 75, 100, 125, 150, 200, 300, 400, 800 };
@@ -33,7 +33,7 @@ ViewerToolbar::ViewerToolbar(PageView *view)
             [this] { Theme::setElevation(this, Elevation::High); });
 
     auto *row = new QHBoxLayout(this);
-    row->setContentsMargins(9, 6, 9, 6);
+    row->setContentsMargins(8, 3, 8, 3);
     row->setSpacing(2);
 
     auto *session = view->session();

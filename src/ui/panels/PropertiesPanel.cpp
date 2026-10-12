@@ -190,7 +190,7 @@ PropertiesPanel::PropertiesPanel(QWidget *parent)
 
     auto *header = new QWidget(this);
     header->setObjectName(QStringLiteral("PanelHeader"));
-    header->setFixedHeight(34);
+    header->setFixedHeight(28);
     auto *headerLayout = new QVBoxLayout(header);
     headerLayout->setContentsMargins(12, 0, 12, 0);
     auto *title = new QLabel(tr("Properties"), header);

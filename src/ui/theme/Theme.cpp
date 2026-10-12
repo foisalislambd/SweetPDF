@@ -354,8 +354,9 @@ QMenu::right-arrow { width: 12px; height: 12px; }
     color: {textMuted};
     font-size: {fontCaption}pt;
     font-weight: 600;
-    letter-spacing: 0.4px;
-    padding: 0 2px 1px 2px;
+    letter-spacing: 0.2px;
+    padding: 0 2px;
+    margin: 0;
 }
 
 QPushButton#RibbonTab {
@@ -363,7 +364,7 @@ QPushButton#RibbonTab {
     border: none;
     border-bottom: 2px solid transparent;
     border-radius: 0;
-    padding: 8px 14px 7px 14px;
+    padding: 4px 12px 3px 12px;
     color: {textMuted};
     font-size: {fontSmall}pt;
     font-weight: 500;
@@ -388,7 +389,7 @@ QToolButton:checked { background: {accentSoft}; border-color: {accent}; color: {
 QToolButton:disabled { color: {textMuted}; }
 QToolButton::menu-indicator { image: none; }
 QToolButton#RibbonAction {
-    padding: 4px 6px 2px 6px;
+    padding: 0 4px;
     color: {text};
     font-size: {fontSmall}pt;
     font-weight: 500;
@@ -401,7 +402,7 @@ QToolButton#RibbonAction:checked {
 QToolButton#RailButton {
     border: none;
     border-radius: 6px;
-    padding: 8px;
+    padding: 2px;
     color: {textMuted};
 }
 QToolButton#RailButton:hover { color: {text}; background: {hover}; }
@@ -429,7 +430,7 @@ QToolButton#AppMenu {
 #PermOff { color: {textMuted}; font-size: {fontSmall}pt; }
 QToolButton#InspectorTab {
     border: none; border-bottom: 2px solid transparent; border-radius: 0;
-    padding: 7px 8px; color: {textMuted}; background: transparent;
+    padding: 4px 8px; color: {textMuted}; background: transparent;
     font-size: {fontSmall}pt;
 }
 QToolButton#InspectorTab:hover { color: {text}; background: {hover}; }
@@ -460,7 +461,7 @@ QTabBar { background: {window}; qproperty-drawBase: 0; }
 QTabBar::tab {
     background: transparent; color: {textMuted}; font-size: {fontSmall}pt;
     border: 1px solid transparent; border-top-left-radius: 9px;
-    border-top-right-radius: 9px; padding: 7px 12px; margin-right: 2px;
+    border-top-right-radius: 9px; padding: 4px 10px; margin-right: 2px;
 }
 QTabBar::tab:hover { background: {hover}; color: {text}; }
 QTabBar::tab:selected {
@@ -547,7 +548,7 @@ QScrollBar::add-line, QScrollBar::sub-line { height: 0; width: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 
 /* --- Status bar and floating surfaces ---------------------------------- */
-QStatusBar { background: {window}; border-top: 1px solid {border}; }
+QStatusBar { background: {window}; border-top: 1px solid {border}; padding: 0; }
 QStatusBar::item { border: none; }
 QStatusBar QLabel { color: {textMuted}; font-size: {fontCaption}pt; }
 #StatusValue { color: {text}; font-size: {fontCaption}pt; font-weight: 600; }
