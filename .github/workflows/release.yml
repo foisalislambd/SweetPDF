@@ -1,13 +1,9 @@
 # Publishes a release for every OS.
 #
-# Order of events: decide whether this push should be released at all, work out
-# the next version, build and test every platform, and only if all of them
-# succeeded create the tag and the GitHub release. A failing platform cancels the
-# others (`fail-fast` in build.yml) and leaves no tag behind, so a failed run
-# never produces a half-finished release.
-#
-# Put "[skip release]" in the commit message to push to main without releasing.
-# The build and the tests still run, so main stays verified either way.
+# A push to main creates a release only when version.md is greater than the
+# newest v* tag. An equal or smaller number builds and tests, then stops.
+# The tag and the GitHub release are created after every platform has
+# succeeded, so a failed run leaves nothing published.
 
 name: Release
 
@@ -15,15 +11,9 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - '**/*.md'
       - 'LICENSE'
       - '.gitignore'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (default: the next one after the latest tag)'
-        required: false
-        type: string
 
 # Releases queue rather than cancel each other: a run that is already creating a
 # tag must be allowed to finish, or the next one would inherit a half-published
@@ -41,87 +31,86 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release: ${{ steps.decide.outputs.release }}
+      version: ${{ steps.decide.outputs.version }}
+      tag: ${{ steps.decide.outputs.tag }}
     steps:
-      - name: Look for a skip marker in the commit message
+      - name: Check out the sources
+        uses: actions/checkout@v7
+        with:
+          # Tags are the current version. A shallow clone would not see them.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Compare version.md with the newest tag
         id: decide
-        env:
-          EVENT: ${{ github.event_name }}
-          MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
 
           note() { printf '%s\n' "$1" >> "$GITHUB_STEP_SUMMARY"; }
 
-          # A manual run is an explicit request to release, so no marker applies.
-          if [[ "$EVENT" != "push" ]]; then
-            echo "release=true" >> "$GITHUB_OUTPUT"
-            note "Manual run: releasing."
-            exit 0
+          file_version="$(awk '/^([0-9]+)\.([0-9]+)\.([0-9]+)[[:space:]]*$/ { print $1; exit }' version.md)"
+          if [[ ! "$file_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version.md has no major.minor.patch line"
+            exit 1
           fi
 
-          # Read from the head commit, in the same spirit as GitHub's own
-          # [skip ci], and accept the spellings people actually type.
-          if grep -qiE '\[(skip[ -]release|release[ -]skip|no[ -]release)\]' <<<"$MESSAGE"; then
+          # Highest exact vMAJOR.MINOR.PATCH. Version sort, so v1.10.0 beats v1.9.0.
+          # A tag with a suffix is not a release number and is left out.
+          latest="$(git tag --list 'v*' --sort=-v:refname | awk '/^v([0-9]+)\.([0-9]+)\.([0-9]+)$/ { sub(/^v/, ""); print; exit }')"
+          latest="${latest:-0.0.0}"
+
+          newer() {
+            local IFS=.
+            local -a want have
+            read -r -a want <<< "$1"
+            read -r -a have <<< "$2"
+            local i
+            for i in 0 1 2; do
+              local left="${want[$i]:-0}"
+              local right="${have[$i]:-0}"
+              if (( 10#$left > 10#$right )); then
+                return 0
+              fi
+              if (( 10#$left < 10#$right )); then
+                return 1
+              fi
+            done
+            return 1
+          }
+
+          if newer "$file_version" "$latest"; then
+            tag="v$file_version"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "::error::$tag already exists"
+              exit 1
+            fi
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$file_version" >> "$GITHUB_OUTPUT"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            note "Releasing $tag. The newest tag was v$latest."
+          else
             echo "release=false" >> "$GITHUB_OUTPUT"
             note "### No release for this push"
             note ""
-            note "The head commit message asks to skip it:"
+            note "\`version.md\` says \`$file_version\`, and the newest tag is \`v$latest\`."
+            note "A release is created only when \`version.md\` is greater."
             note ""
-            note '```'
-            note "$MESSAGE"
-            note '```'
-            note ""
-            note "The build and the tests still ran."
-            exit 0
+            note "The build and the tests still run."
           fi
-
-          echo "release=true" >> "$GITHUB_OUTPUT"
-
-  version:
-    name: Work out the version
-    needs: gate
-    if: needs.gate.outputs.release == 'true'
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.pick.outputs.version }}
-      tag: ${{ steps.pick.outputs.tag }}
-    steps:
-      - name: Check out the sources
-        uses: actions/checkout@v7
-        with:
-          # The whole history: next-version.sh reads the existing tags.
-          fetch-depth: 0
-
-      - name: Pick the next version
-        id: pick
-        env:
-          REQUESTED: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          version="$(./scripts/next-version.sh "${REQUESTED#v}")"
-          tag="v$version"
-          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            echo "::error::$tag already exists - pass a different version or delete the tag"
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Releasing $tag" >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: Build
-    needs: [gate, version]
-    # Runs even when the release is skipped, because main is still worth testing.
-    # The version job is skipped in that case, and there is nothing to package.
-    if: ${{ !cancelled() && needs.gate.result == 'success' && needs.version.result != 'failure' }}
+    needs: gate
+    # Main is tested either way. Packaging happens only when a release was decided.
+    if: ${{ !cancelled() && needs.gate.result == 'success' }}
     uses: ./.github/workflows/build.yml
     with:
-      version: ${{ needs.version.outputs.version || '0.0.0' }}
+      version: ${{ needs.gate.outputs.version || '0.0.0' }}
       package: ${{ needs.gate.outputs.release == 'true' }}
 
   release:
-    name: Publish ${{ needs.version.outputs.tag }}
-    needs: [gate, version, build]
+    name: Publish ${{ needs.gate.outputs.tag }}
+    needs: [gate, build]
     if: needs.gate.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -150,8 +139,8 @@ jobs:
       - name: Create the tag and the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.version.outputs.tag }}
-          VERSION: ${{ needs.version.outputs.version }}
+          TAG: ${{ needs.gate.outputs.tag }}
+          VERSION: ${{ needs.gate.outputs.version }}
         run: |
           set -euo pipefail
           gh release create "$TAG" \

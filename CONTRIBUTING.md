@@ -116,11 +116,10 @@ MuPDF quirk is welcome and often requested.
 - CI has to be green. It builds and tests Linux and Windows with warnings as
   errors; a failure on either platform blocks the merge.
 
-Pushing to `main` publishes a release, so pull requests are the normal route
-even for maintainers. Version numbers are worked out automatically — never edit
-a version by hand. When a change belongs on `main` but does not deserve a release
-of its own, put `[skip release]` in the commit message: the build and the tests
-still run, only the tag and the release are skipped. See [Releases and
+Pushing to `main` publishes a release only when [`version.md`](version.md) is
+greater than the newest `v*` tag, so pull requests are still the normal route.
+Leave that number unchanged to land work without a release; raise it when the
+push should publish. The build and the tests run either way. See [Releases and
 CI](README.md#releases-and-ci).
 
 ## Questions

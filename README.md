@@ -425,26 +425,20 @@ Two workflows drive everything under `.github/workflows`:
 - **CI** (`ci.yml`) runs on pull requests and on pushes to any branch except
 `main`. It builds and tests every platform with warnings promoted to errors,
 and publishes nothing.
-- **Release** (`release.yml`) runs on every push to `main` (documentation-only
-commits are ignored) and can be started by hand from the Actions tab, with an
-optional explicit version.
+- **Release** (`release.yml`) runs on every push to `main` and can be started
+by hand from the Actions tab.
 
-A release run works out the version first, then builds and tests all platforms,
-and only creates the tag and the GitHub release when every platform succeeded.
-The builds share one matrix job with `fail-fast: true`, so the first failure
+A release run reads [`version.md`](version.md) first, then builds and tests all
+platforms, and only creates the tag and the GitHub release when that number is
+greater than the newest `v*` tag and every platform succeeded. The same number,
+or a smaller one, still builds and tests `main` and publishes nothing. The
+builds share one matrix job with `fail-fast: true`, so the first failure
 cancels the remaining platforms; because the tag is created by the publish step,
 a failed run leaves no tag and no release behind. Release runs queue instead of
 cancelling each other, so a run that is already publishing is never interrupted.
 
-To land something on `main` without cutting a release, put `[skip release]` in
-the commit message. `[skip-release]`, `[no release]` and `[release skip]` work
-too, in any capitalisation, anywhere in the message. The build and the tests
-still run — only the tag and the release are skipped, so `main` stays verified.
-A manual run from the Actions tab always releases, marker or not.
-
-Versions come from `scripts/next-version.sh`: the first release is `1.0.0` and
-every component stops at nine, so `1.0.9` is followed by `1.1.0` and `1.9.9` by
-`2.0.0`. Run the script locally to see what the next release would be.
+To cut a release, raise the number in `version.md` and push to `main`. Leave it
+unchanged to land work without a release.
 
 Each release carries a `.deb` and a `.tar.gz` for Linux, a `-setup.exe` installer
 and a portable `.zip` for Windows, and a `SHA256SUMS` file. macOS is not built: it

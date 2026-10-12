@@ -3,10 +3,9 @@
 Notable changes, newest first. The format follows [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
-Version numbers are produced by `scripts/next-version.sh`: the first release is
-`1.0.0` and every component stops at nine, so `1.0.9` is followed by `1.1.0`.
-GitHub release notes are generated from commits; this file records the changes
-worth knowing about as a user.
+The number in [`version.md`](version.md) is what a push to `main` releases, and
+only when it is greater than the newest tag. GitHub release notes are generated
+from commits; this file records the changes worth knowing about as a user.
 
 ## Unreleased
 

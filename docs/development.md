@@ -51,12 +51,10 @@ See [screenshots/README.md](screenshots/README.md) for the full set.
 | Workflow | When | What |
 | --- | --- | --- |
 | `ci.yml` | PRs and non-`main` pushes | Build + test, warnings as errors, no publish |
-| `release.yml` | Push to `main` (or manual) | Version, multi-OS build, then tag + GitHub release |
+| `release.yml` | Push to `main` (or manual) | Compare `version.md` with the newest tag, then build; tag + GitHub release only if the file is greater |
 
-Put `[skip release]` in a `main` commit message to land docs/fixes without a
-new tag. Manual Actions runs always release.
-
-Version bumps use `scripts/next-version.sh` (components roll 0–9).
+Raise the number in [`version.md`](../version.md) to publish. An equal or
+smaller number lands on `main` without a new tag.
 
 Artifacts: Linux `.deb` + `.tar.gz`, Windows `-setup.exe` + portable `.zip`,
 plus `SHA256SUMS`. macOS packaging is not enabled in the matrix yet.
