@@ -38,6 +38,7 @@ public:
 private:
     QHBoxLayout *m_row = nullptr;
     QVBoxLayout *m_compactColumn = nullptr;
+    int m_compactCount = 0;
 };
 
 /// One ribbon tab: a horizontal strip of groups.

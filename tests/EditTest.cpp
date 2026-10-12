@@ -160,7 +160,7 @@ int main(int argc, char *argv[])
             checkEqual(document->pageRotation(1), 90, "a page can be rotated");
 
             document->insertBlankPage(1, QSizeF(612, 792));
-            checkEqual(document->pageCount(), original, "insert needs a reopen to be visible");
+            checkEqual(document->pageCount(), original + 1, "the inserted page is counted immediately");
 
             auto grown = PdfDocument::openFromBytes(document->toBytes(), QString());
             checkEqual(grown->pageCount(), original + 1, "the inserted page is there");
