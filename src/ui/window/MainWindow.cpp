@@ -538,7 +538,7 @@ void MainWindow::createActions()
                                            QStringLiteral("panel-right"),
                                            QKeySequence(Qt::CTRL | Qt::Key_J));
     toggleProperties->setCheckable(true);
-    toggleProperties->setChecked(false);
+    toggleProperties->setChecked(true);
     connect(toggleProperties, &QAction::toggled, this, [this](bool) {
         updateInspectorVisibility();
     });
@@ -936,13 +936,24 @@ void MainWindow::createCentralArea()
 
     m_properties = new PropertiesPanel(m_inspector);
     inspectorColumn->addWidget(m_properties, 1);
+    connect(m_properties, &PropertiesPanel::revealRequested, this, [this] {
+        QAction *toggle = action(QStringLiteral("toggleProperties"));
+        if (toggle && !toggle->isChecked())
+            toggle->setChecked(true);
+    });
+    connect(m_properties, &PropertiesPanel::commandRequested, this,
+            [this](const QString &actionId) {
+                if (QAction *command = action(actionId); command && command->isEnabled())
+                    command->trigger();
+            });
 
+    m_inspector->setMinimumWidth(272);
     m_splitter->addWidget(m_inspector);
 
     m_splitter->setStretchFactor(0, 0);
     m_splitter->setStretchFactor(1, 1);
     m_splitter->setStretchFactor(2, 0);
-    m_splitter->setSizes({ 266, 800, 262 });
+    m_splitter->setSizes({ 248, 760, 300 });
 
     connect(m_tabs, &QTabWidget::currentChanged, this,
             [this](int) { updateForCurrentDocument(); });
@@ -1298,7 +1309,7 @@ void MainWindow::applyLayoutMode(bool force)
     m_zoomSlider->setVisible(!narrow);
 
     // Mode change resets the navigation panel to the mode's default. Properties
-    // stay under Ctrl+J; tool options open the inspector on their own when needed.
+    // follow the Properties toggle (on by default). Tool options share the inspector.
     const bool showSidebarPanel = comfortable;
 
     {

@@ -423,6 +423,20 @@ QToolButton#AppMenu {
 #Inspector { background: {window}; border-left: 1px solid {border}; }
 #PropertiesPanel { background: {window}; }
 #SectionLabel { color: {textMuted}; font-size: {fontCaption}pt; font-weight: 600; }
+#FieldCaption { color: {textMuted}; font-size: {fontCaption}pt; }
+#InspectorHint, #PropStatus { color: {textMuted}; font-size: {fontCaption}pt; }
+#PermOn { color: {text}; font-weight: 600; font-size: {fontSmall}pt; }
+#PermOff { color: {textMuted}; font-size: {fontSmall}pt; }
+QToolButton#InspectorTab {
+    border: none; border-bottom: 2px solid transparent; border-radius: 0;
+    padding: 7px 8px; color: {textMuted}; background: transparent;
+    font-size: {fontSmall}pt;
+}
+QToolButton#InspectorTab:hover { color: {text}; background: {hover}; }
+QToolButton#InspectorTab:checked {
+    color: {accent}; background: transparent;
+    border-bottom: 2px solid {accent}; font-weight: 600;
+}
 
 /* The tool's own settings, sitting above the document properties. The tint marks
    it as being about what you are doing rather than about the file. */

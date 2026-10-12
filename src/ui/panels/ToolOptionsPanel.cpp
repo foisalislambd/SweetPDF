@@ -3,6 +3,7 @@
 #include "ui/theme/Theme.h"
 
 #include <QColorDialog>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPainter>
@@ -225,7 +226,7 @@ void ToolOptionsPanel::rebuild()
     }
     if (info->colour || m_tool == Tool::Stamp) {
         m_body->addWidget(buildCommandButton(QStringLiteral("deleteAnnotation"),
-                                             tr("Delete selected comment"),
+                                             tr("Delete selection"),
                                              QStringLiteral("trash"), this));
     }
 
@@ -445,17 +446,19 @@ QWidget *ToolOptionsPanel::buildStampPresets(QWidget *parent)
     caption->setObjectName(QStringLiteral("SectionLabel"));
     column->addWidget(caption);
 
-    auto *row = new QHBoxLayout;
-    row->setContentsMargins(0, 0, 0, 0);
-    row->setSpacing(4);
+    auto *grid = new QGridLayout;
+    grid->setContentsMargins(0, 0, 0, 0);
+    grid->setSpacing(4);
 
     const char *names[] = { "Draft", "Approved", "Confidential", "Final" };
+    int index = 0;
     for (const char *name : names) {
         auto *chip = new QToolButton(holder);
         chip->setObjectName(QStringLiteral("ToolChip"));
         chip->setCheckable(true);
         chip->setAutoRaise(true);
         chip->setText(QString::fromLatin1(name));
+        chip->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         chip->setProperty("sweetStampName", QString::fromLatin1(name));
         connect(chip, &QToolButton::clicked, this, [this, name = QString::fromLatin1(name)] {
             if (!m_session)
@@ -463,11 +466,11 @@ QWidget *ToolOptionsPanel::buildStampPresets(QWidget *parent)
             m_session->setStampIconName(name);
             Q_EMIT commandRequested(QStringLiteral("toolStamp"));
         });
-        row->addWidget(chip);
+        grid->addWidget(chip, index / 2, index % 2);
         m_stampButtons.append(chip);
+        ++index;
     }
-    row->addStretch(1);
-    column->addLayout(row);
+    column->addLayout(grid);
     return holder;
 }
 

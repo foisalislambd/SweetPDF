@@ -97,7 +97,7 @@ Sidebar::Sidebar(QWidget *parent)
     connect(m_attachments, &AttachmentsPanel::statusMessage, this, &Sidebar::statusMessage);
 
     addRailButton(Panel::Pages, QStringLiteral("pages"), tr("Pages"));
-    addRailButton(Panel::Bookmarks, QStringLiteral("bookmark"), tr("Marks"));
+    addRailButton(Panel::Bookmarks, QStringLiteral("bookmark"), tr("Bookmarks"));
     addRailButton(Panel::Comments, QStringLiteral("comment"), tr("Notes"));
     addRailButton(Panel::Forms, QStringLiteral("form"), tr("Forms"));
     addRailButton(Panel::Attachments, QStringLiteral("attachment"), tr("Files"));

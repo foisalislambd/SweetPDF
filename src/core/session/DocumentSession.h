@@ -115,7 +115,13 @@ public:
 
     /// Currently selected annotation, or an object number of 0 for none.
     int selectedAnnotation() const noexcept { return m_selectedAnnotation; }
+    int selectedAnnotationPage() const noexcept { return m_selectedAnnotationPage; }
     void setSelectedAnnotation(int pageIndex, int objectNumber);
+
+    /// Writes the Info dictionary (title, author, subject, keywords). Other
+    /// fields on `info` are written too, so callers should start from the
+    /// document's current info and change only what the user edited.
+    bool setDocumentInfo(const DocumentInfo &info, QString *errorMessage = nullptr);
 
     /// Colour and opacity new markup is created with.
     QColor markupColor() const noexcept { return m_markupColor; }

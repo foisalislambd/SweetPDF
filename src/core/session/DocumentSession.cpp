@@ -180,6 +180,36 @@ QList<Annotation> DocumentSession::annotationsOnPage(int pageIndex) const
     return annotations::onPage(*m_document, pageIndex);
 }
 
+bool DocumentSession::setDocumentInfo(const DocumentInfo &info, QString *errorMessage)
+{
+    if (!m_document || !m_document->isPdf()) {
+        if (errorMessage)
+            *errorMessage = tr("Only PDF files store a title, author and subject.");
+        return false;
+    }
+
+    const DocumentInfo &current = m_document->info();
+    if (current.title == info.title && current.author == info.author
+        && current.subject == info.subject && current.keywords == info.keywords
+        && current.creator == info.creator && current.producer == info.producer
+        && current.creationDate == info.creationDate
+        && current.modificationDate == info.modificationDate) {
+        return true;
+    }
+
+    try {
+        m_document->setInfo(info);
+    } catch (const MuError &failure) {
+        if (errorMessage)
+            *errorMessage = failure.details();
+        return false;
+    }
+
+    setModified(true);
+    Q_EMIT documentChanged();
+    return true;
+}
+
 void DocumentSession::setSelectedAnnotation(int pageIndex, int objectNumber)
 {
     if (m_selectedAnnotationPage == pageIndex && m_selectedAnnotation == objectNumber)
