@@ -6,7 +6,9 @@ package downloads see the [README install section](../README.md#install).
 
 ## Open a document
 
-- Home screen: **Open PDF**, a task tile, or drop a file on the window.
+- Home screen: **Open**, a task tile, or drop a file on the window. PDF, XPS, EPUB,
+  CBZ, SVG, Markdown, HTML, plain text and FictionBook all open. Markdown needs
+  MuPDF 1.28 (run `scripts/build-mupdf.sh` when the distribution package is older).
 - Ribbon / Menu: **Open** (`Ctrl+O`).
 - Recent list on the home screen: click a path to reopen it.
 
@@ -18,7 +20,7 @@ Encrypted files ask for a password once per open. SweetPDF does not store it.
 | --- | --- |
 | **Home** | Task tiles and recent files when nothing is open. Ribbon and panels stay hidden. |
 | **Ribbon** | Commands by job: Home, Edit, Comment, Page, View, Protect, Tools. **Menu** holds file commands and preferences. |
-| **Left panel** (`Ctrl+B`) | Pages, bookmarks, comments, forms (attachments and layers are placeholders). |
+| **Left panel** (`Ctrl+B`) | Pages, bookmarks, comments, forms, embedded files, and layers. |
 | **Canvas** | The document. Floating bar: select / pan, zoom, fit. |
 | **Right panel** (`Ctrl+J`) | Active tool options, then document properties. |
 | **Status bar** | Page number, zoom, layout, theme. |
@@ -30,7 +32,7 @@ Encrypted files ask for a password once per open. SweetPDF does not store it.
 a word, triple-click a line where supported.
 
 **Find** — `Ctrl+F`. Matches highlight across the document; `F3` / `Shift+F3`
-walk through them.
+walk through them. The `.*` button treats the query as a regular expression.
 
 **Markup** — Comment or Home ribbon: Highlight, Underline, Strike, Draw, Note.
 Colours and opacity live in the right-hand tool options.
@@ -40,7 +42,8 @@ Colours and opacity live in the right-hand tool options.
 written as a FreeText annotation (not a full re-flow of the original font run).
 
 **Pages** — Insert, delete, extract, duplicate, rotate; drag thumbnails to
-reorder. Merge and split live under Page / Tools.
+reorder. Merge and split live under Page / Tools. Bookmarks: the Marks panel
+can add the current page, and rename or delete an entry.
 
 **Forms** — Forms panel lists fields; fill values in place. Flatten bakes them
 into page content.

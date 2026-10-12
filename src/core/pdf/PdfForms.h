@@ -9,6 +9,16 @@ namespace sweet::core {
 
 class PdfDocument;
 
+/// What MuPDF's signature check says about a signed field.
+enum class SignatureStatus {
+    NotApplicable, ///< Not a signature field.
+    Unsigned,
+    Valid,
+    Invalid,
+    BrokenByEdits, ///< The signature was valid until unsaved changes.
+    Unchecked,     ///< The check could not run (missing crypto, or it threw).
+};
+
 /// The kinds of AcroForm field SweetPDF can fill in.
 enum class FieldType {
     Unknown,
@@ -39,6 +49,7 @@ struct FormField
     bool required = false;
     bool multiline = false;
     bool signed_ = false; ///< Signature fields that already carry a signature.
+    SignatureStatus signature = SignatureStatus::NotApplicable;
 };
 
 /// Reads and fills the interactive form of one document.

@@ -62,6 +62,7 @@ QRectF fitToAspect(const QSizeF &imageSize, const QRectF &rect)
 
 int addImage(PdfDocument &document, int pageIndex, const QImage &image, const QRectF &rect)
 {
+    document.ensureStructure();
     pdf_document *pdf = document.pdfHandle();
     if (!pdf || image.isNull() || rect.isEmpty() || pageIndex < 0
         || pageIndex >= document.pageCount()) {
@@ -110,6 +111,7 @@ int addImage(PdfDocument &document, int pageIndex, const QImage &image, const QR
 
 bool addLink(PdfDocument &document, int pageIndex, const QRectF &rect, const QString &uri)
 {
+    document.ensureStructure();
     pdf_document *pdf = document.pdfHandle();
     if (!pdf || rect.isEmpty() || uri.isEmpty() || pageIndex < 0
         || pageIndex >= document.pageCount()) {
@@ -178,6 +180,7 @@ QList<Link> linksOnPage(const PdfDocument &document, int pageIndex)
 
 bool removeLinkAt(PdfDocument &document, int pageIndex, const QPointF &at)
 {
+    document.ensureStructure();
     pdf_document *pdf = document.pdfHandle();
     if (!pdf || pageIndex < 0 || pageIndex >= document.pageCount())
         return false;

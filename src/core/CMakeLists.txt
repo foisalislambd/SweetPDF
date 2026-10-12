@@ -12,6 +12,9 @@ qt_add_library(sweetpdf_core STATIC
     pdf/PdfAnnotations.h       pdf/PdfAnnotations.cpp
     pdf/PdfContent.h           pdf/PdfContent.cpp
     pdf/PdfForms.h             pdf/PdfForms.cpp
+    pdf/PdfLayers.cpp
+    pdf/PdfFiles.cpp
+    pdf/MuVersion.h
     pdf/PdfExport.h            pdf/PdfExport.cpp
 
     # render/ - turning pages into bitmaps off the GUI thread.

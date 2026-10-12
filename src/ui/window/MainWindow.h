@@ -70,6 +70,7 @@ public Q_SLOTS:
     void insertPagesFromFile(int atPage);
     void deleteCurrentPages();
     void extractPages(const QList<int> &pages);
+    void saveEmbeddedFile(int index);
     void mergeDocuments();
     void splitDocument();
 

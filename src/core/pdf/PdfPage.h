@@ -66,6 +66,24 @@ public:
     /// Boxes of every match, in unrotated page points.
     QList<QRectF> search(const QString &needle, int maxHits = 500) const;
 
+    /// How `findText` matches. Regular expressions go through MuPDF's searcher,
+    /// which understands the same hyphen and case rules as text extraction.
+    struct FindOptions
+    {
+        bool matchCase = false;
+        bool wholeWords = false;
+        bool regularExpression = false;
+    };
+
+    struct FindResult
+    {
+        QList<TextRange> ranges;
+        /// Set when a regular expression does not compile. `ranges` is then empty.
+        QString error;
+    };
+
+    FindResult findText(const QString &needle, const FindOptions &options) const;
+
     /// Maps a point from page points to the coordinates of a rendered image.
     static QTransform pageToImage(const QSizeF &sizePoints, qreal scale, int rotation);
 

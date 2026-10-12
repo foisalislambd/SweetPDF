@@ -47,7 +47,8 @@ struct SaveOptions
     /// Append only the changes. Fast and preserves signatures, but impossible
     /// after structural edits or when encryption changes.
     bool incremental = false;
-    bool linearise = false;      ///< Optimise for byte-at-a-time web viewing.
+    /// Ignored. MuPDF 1.26 removed linearisation and 1.28 throws if it is requested.
+    bool linearise = false;
     bool compressStreams = true;
     bool cleanContentStreams = false; ///< Rewrite content streams (smaller, slower).
     bool garbageCollect = true;       ///< Drop unreachable objects and de-duplicate.
@@ -90,6 +91,34 @@ struct RedactOptions
     LineArt lineArt = LineArt::RemoveIfTouched;
 };
 
+/// One optional-content layer (an OCG). `index` is MuPDF's layer number.
+struct OptionalLayer
+{
+    int index = 0;
+    QString name;
+    bool enabled = true;
+};
+
+/// A named optional-content configuration (the presets in the PDF's OCProperties).
+struct LayerConfig
+{
+    int index = 0;
+    QString name;
+};
+
+/// A file embedded in the PDF, from the document's EmbeddedFiles name tree.
+struct EmbeddedFile
+{
+    QString name;
+    QString mimeType;
+    qint64 size = -1;
+    /// Set for a file-attachment annotation. -1 for a document-level embedded file.
+    int pageIndex = -1;
+    int objectNumber = 0;
+    /// Index inside the EmbeddedFiles name tree. -1 for an annotation attachment.
+    int nameTreeIndex = -1;
+};
+
 /// An opened document. Pages are loaded lazily and shared, so a thumbnail and
 /// the main view can render the same page without loading it twice.
 ///
@@ -129,6 +158,12 @@ public:
     const DocumentPermissions &permissions() const noexcept { return m_permissions; }
     const DocumentInfo &info() const noexcept { return m_info; }
     const QList<OutlineNode> &outline() const noexcept { return m_outline; }
+
+    /// Appends a bookmark for `pageIndex` at the top level. PDF only.
+    bool addBookmark(const QString &title, int pageIndex);
+    /// `path` is the sibling index at each depth, matching the outline tree.
+    bool renameBookmark(const QList<int> &path, const QString &title);
+    bool removeBookmark(const QList<int> &path);
 
     /// Page box in points. Cheap: sizes are read once when the document opens.
     QSizeF pageSizePoints(int index) const;
@@ -189,7 +224,28 @@ public:
 
     /// Drops cached display lists / text layers for one page, or every page when
     /// `pageIndex` is negative. Does not load pages that were never requested.
-    void discardPageCaches(int pageIndex = -1);
+    void discardPageCaches(int pageIndex = -1) const;
+
+    /// Scans the PDF for structural damage and repairs it in memory if needed.
+    /// MuPDF 1.28 reports whether that repair rewrote anything. Cheap after the
+    /// first call. Editing and saving call this themselves.
+    void ensureStructure() const;
+    bool structureRepaired() const noexcept { return m_structureRepaired; }
+    /// Set when the structure check itself failed. Empty when it succeeded.
+    const QString &structureWarning() const noexcept { return m_structureWarning; }
+
+    /// Optional content groups. Empty when the file is not a PDF or has none.
+    QList<OptionalLayer> layers() const;
+    QList<LayerConfig> layerConfigs() const;
+    /// Applies a named configuration and drops cached rasters.
+    bool selectLayerConfig(int index);
+    /// Shows or hides one layer and drops cached rasters. Returns false when
+    /// `index` is not a layer of this document.
+    bool setLayerEnabled(int index, bool enabled);
+
+    QList<EmbeddedFile> embeddedFiles() const;
+    /// Bytes of embedded file `index` in the list from embeddedFiles().
+    QByteArray embeddedFileContents(int index) const;
 
     /// The MuPDF handles. For use inside `core/pdf` only: callers must hold
     /// parseMutex() and must not let these outlive the document.
@@ -224,6 +280,9 @@ private:
     /// lazily when the document was opened from memory.
     QByteArray m_backingBytes;
     bool m_edited = false;
+    mutable bool m_structureChecked = false;
+    mutable bool m_structureRepaired = false;
+    mutable QString m_structureWarning;
     QString m_filePath;
     int m_pageCount = 0;
     bool m_encrypted = false;

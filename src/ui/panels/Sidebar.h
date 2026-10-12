@@ -13,8 +13,10 @@ class DocumentSession;
 
 namespace sweet::ui {
 
+class AttachmentsPanel;
 class CommentsPanel;
 class FormsPanel;
+class LayersPanel;
 class OutlinePanel;
 class ThumbnailPanel;
 
@@ -53,6 +55,7 @@ Q_SIGNALS:
     /// the window: a panel has no business opening file dialogs.
     void extractRequested(const QList<int> &pages);
     void insertFileRequested(int atPage);
+    void saveAttachmentRequested(int index);
     void statusMessage(const QString &message);
 
 private:
@@ -68,6 +71,8 @@ private:
     OutlinePanel *m_outline = nullptr;
     CommentsPanel *m_comments = nullptr;
     FormsPanel *m_forms = nullptr;
+    AttachmentsPanel *m_attachments = nullptr;
+    LayersPanel *m_layers = nullptr;
 
     Panel m_currentPanel = Panel::Pages;
 };

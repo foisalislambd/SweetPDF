@@ -11,6 +11,30 @@
 namespace sweet::core {
 namespace {
 
+/// Text extraction options. Dehyphenation is what MuPDF 1.28 improved: a hyphen
+/// at the end of a line stays a soft hyphen so search and copy can join the word.
+/// Ligatures are expanded (the default) so "ﬁ" is three characters, which is
+/// also more reliable from 1.28 on.
+fz_stext_options textOptions()
+{
+    fz_stext_options options{};
+    options.flags = FZ_STEXT_DEHYPHENATE | FZ_STEXT_ACCURATE_BBOXES;
+    return options;
+}
+
+int collectMatch(fz_context *, void *opaque, int numQuads, fz_quad *hitQuads, int, int)
+{
+    auto *hits = static_cast<QList<QList<QRectF>> *>(opaque);
+    if (hits->size() >= 500)
+        return 1;
+    QList<QRectF> boxes;
+    boxes.reserve(numQuads);
+    for (int index = 0; index < numQuads; ++index)
+        boxes.append(toQRectF(hitQuads[index]));
+    hits->append(std::move(boxes));
+    return 0;
+}
+
 fz_matrix renderMatrix(qreal scale, int rotation)
 {
     const float s = static_cast<float>(scale);
@@ -176,7 +200,7 @@ QString PdfPage::text() const
     fz_context *ctx = MuContext::forThread();
     fz_display_list *list = displayList(ctx);
 
-    fz_stext_options options{};
+    const fz_stext_options options = textOptions();
     fz_stext_page *stext = nullptr;
     fz_var(stext);
     QString result;
@@ -220,7 +244,7 @@ std::shared_ptr<const PageText> PdfPage::textLayer() const
     fz_context *ctx = MuContext::forThread();
     fz_display_list *list = displayList(ctx);
 
-    fz_stext_options options{};
+    const fz_stext_options options = textOptions();
     fz_stext_page *stext = nullptr;
     fz_var(stext);
     try {
@@ -345,6 +369,64 @@ QList<QRectF> PdfPage::search(const QString &needle, int maxHits) const
     for (int i = 0; i < hits; ++i)
         boxes.append(toQRectF(quads.at(i)));
     return boxes;
+}
+
+PdfPage::FindResult PdfPage::findText(const QString &needle, const FindOptions &options) const
+{
+    FindResult result;
+    if (needle.isEmpty())
+        return result;
+
+    const auto layer = textLayer();
+    if (!layer)
+        return result;
+
+    if (!options.regularExpression) {
+        const auto sensitivity =
+            options.matchCase ? Qt::CaseSensitive : Qt::CaseInsensitive;
+        result.ranges = layer->findAll(needle, sensitivity, options.wholeWords);
+        return result;
+    }
+
+    fz_context *ctx = MuContext::forThread();
+    fz_display_list *list = displayList(ctx);
+    const fz_stext_options extraction = textOptions();
+    fz_stext_page *stext = nullptr;
+    fz_var(stext);
+    QList<QList<QRectF>> quads;
+    int failed = 0;
+    fz_var(failed);
+    {
+        const std::lock_guard<std::mutex> guard(*m_parseMutex);
+        fz_try(ctx)
+        {
+            stext = fz_new_stext_page_from_display_list(ctx, list, &extraction);
+            fz_search_options flags = FZ_SEARCH_REGEXP;
+            if (!options.matchCase)
+                flags = static_cast<fz_search_options>(flags | FZ_SEARCH_IGNORE_CASE);
+            fz_match_stext_page_cb(ctx, stext, needle.toUtf8().constData(), collectMatch, &quads,
+                                   flags);
+        }
+        fz_catch(ctx)
+            failed = 1;
+    }
+    fz_drop_stext_page(ctx, stext);
+    fz_drop_display_list(ctx, list);
+
+    if (failed) {
+        const QString failure = MuContext::lastError(ctx);
+        result.error = failure.isEmpty()
+            ? QStringLiteral("That regular expression could not be compiled")
+            : failure;
+        return result;
+    }
+
+    for (const QList<QRectF> &hit : quads) {
+        const TextRange range = layer->covering(hit);
+        if (!range.isEmpty())
+            result.ranges.append(range);
+    }
+    return result;
 }
 
 } // namespace sweet::core

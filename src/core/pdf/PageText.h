@@ -59,6 +59,10 @@ public:
     QList<TextRange> findAll(const QString &needle, Qt::CaseSensitivity sensitivity,
                              bool wholeWords) const;
 
+    /// The character span whose boxes meet `areas`, for highlighting a MuPDF
+    /// search hit that came back as quads rather than as indices.
+    TextRange covering(const QList<QRectF> &areas) const;
+
 private:
     QString m_text;
     QList<QRectF> m_boxes; ///< One per character; null for line breaks.

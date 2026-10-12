@@ -60,6 +60,7 @@ void DocumentSession::adoptDocument(std::shared_ptr<PdfDocument> document, const
     m_filePath = path;
     m_selectedAnnotation = 0;
     m_selectedAnnotationPage = -1;
+    m_structureNotified = false;
 
     if (resetHistory) {
         m_undoStack->clear();
@@ -128,6 +129,7 @@ bool DocumentSession::saveAs(const QString &path, const SaveOptions &options, bo
         setModified(false);
     }
 
+    publishStructureNotice();
     Q_EMIT savedTo(path);
     return true;
 }
@@ -483,12 +485,78 @@ void DocumentSession::setLayout(PageLayout layout)
     Q_EMIT layoutChanged(m_layout);
 }
 
+void DocumentSession::publishStructureNotice()
+{
+    if (m_structureNotified || !m_document)
+        return;
+
+    QString message;
+    if (m_document->structureRepaired()) {
+        message = tr("MuPDF repaired this PDF's structure. Check the pages, then save if "
+                     "they look right.");
+    } else if (!m_document->structureWarning().isEmpty()) {
+        message = tr("Could not check this PDF's structure: %1")
+                      .arg(m_document->structureWarning());
+    } else {
+        return;
+    }
+
+    m_structureNotified = true;
+    Q_EMIT userNotice(message);
+}
+
 void DocumentSession::setModified(bool modified)
 {
+    publishStructureNotice();
     if (modified == m_modified)
         return;
     m_modified = modified;
     Q_EMIT modifiedChanged(m_modified);
+}
+
+bool DocumentSession::setLayerEnabled(int index, bool enabled)
+{
+    if (!m_document || !m_document->setLayerEnabled(index, enabled))
+        return false;
+    setModified(true);
+    invalidatePage(-1);
+    return true;
+}
+
+bool DocumentSession::selectLayerConfig(int index)
+{
+    if (!m_document || !m_document->selectLayerConfig(index))
+        return false;
+    setModified(true);
+    invalidatePage(-1);
+    return true;
+}
+
+bool DocumentSession::addBookmark(const QString &title, int pageIndex)
+{
+    if (!m_document || !m_document->addBookmark(title, pageIndex))
+        return false;
+    setModified(true);
+    Q_EMIT outlineChanged();
+    return true;
+}
+
+bool DocumentSession::renameBookmark(const QList<int> &path, const QString &title)
+{
+    if (!m_document || !m_document->renameBookmark(path, title))
+        return false;
+    setModified(true);
+    Q_EMIT outlineChanged();
+    return true;
+}
+
+bool DocumentSession::removeBookmark(const QList<int> &path)
+{
+    if (!m_document || !m_document->removeBookmark(path))
+        return false;
+    setModified(true);
+    Q_EMIT outlineChanged();
+    return true;
 }
 
 void DocumentSession::invalidatePage(int pageIndex)

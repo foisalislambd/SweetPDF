@@ -4,7 +4,13 @@
 #include "core/session/DocumentSession.h"
 #include "ui/theme/Theme.h"
 
+#include <QAction>
+#include <QFont>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QLabel>
+#include <QMenu>
+#include <QPushButton>
 #include <QStackedWidget>
 #include <QTreeWidget>
 #include <QVBoxLayout>
@@ -13,6 +19,7 @@ namespace sweet::ui {
 namespace {
 
 constexpr int pageIndexRole = Qt::UserRole + 1;
+constexpr int pathRole = Qt::UserRole + 2;
 
 QWidget *makeEmptyState(const QString &title, const QString &hint, QWidget *parent)
 {
@@ -58,11 +65,33 @@ OutlinePanel::OutlinePanel(QWidget *parent)
     stack->addWidget(m_tree);
 
     m_emptyState = makeEmptyState(tr("No bookmarks"),
-                                  tr("This document has no outline. Bookmarks you add will "
-                                     "appear here."),
+                                  tr("Bookmark the page you are reading. Entries you add are "
+                                     "saved with the PDF."),
                                   stack);
     stack->addWidget(m_emptyState);
     stack->setCurrentWidget(m_emptyState);
+
+    m_addButton = new QPushButton(tr("Bookmark this page"), this);
+    m_addButton->setIcon(icon(QStringLiteral("bookmark")));
+    layout->addWidget(m_addButton);
+    connect(m_addButton, &QPushButton::clicked, this, &OutlinePanel::addBookmark);
+
+    m_tree->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_tree, &QTreeWidget::customContextMenuRequested, this, [this](const QPoint &at) {
+        QTreeWidgetItem *item = m_tree->itemAt(at);
+        if (!item || !m_session || !m_session->isLoaded() || !m_session->document()->isPdf())
+            return;
+        // Right-click does not change the current row. Use the row under the pointer.
+        m_tree->setCurrentItem(item);
+        QMenu menu(this);
+        QAction *rename = menu.addAction(tr("Rename"));
+        QAction *remove = menu.addAction(tr("Delete"));
+        QAction *chosen = menu.exec(m_tree->viewport()->mapToGlobal(at));
+        if (chosen == rename)
+            renameBookmark();
+        else if (chosen == remove)
+            removeBookmark();
+    });
 
     connect(m_tree, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item, int) {
         if (!m_session)
@@ -85,16 +114,83 @@ void OutlinePanel::setSession(core::DocumentSession *session)
     if (m_session) {
         connect(m_session, &core::DocumentSession::documentChanged, this,
                 &OutlinePanel::rebuild);
+        connect(m_session, &core::DocumentSession::outlineChanged, this, &OutlinePanel::rebuild);
     }
     rebuild();
 }
 
-void OutlinePanel::appendNodes(QTreeWidgetItem *parent, const QList<core::OutlineNode> &nodes)
+QList<int> OutlinePanel::pathOf(QTreeWidgetItem *item) const
 {
-    for (const core::OutlineNode &node : nodes) {
+    QList<int> path;
+    if (!item)
+        return path;
+    const QVariantList stored = item->data(0, pathRole).toList();
+    for (const QVariant &entry : stored)
+        path.append(entry.toInt());
+    return path;
+}
+
+void OutlinePanel::addBookmark()
+{
+    if (!m_session || !m_session->isLoaded() || !m_session->document()->isPdf())
+        return;
+    const int page = m_session->currentPage();
+    bool accepted = false;
+    const QString title = QInputDialog::getText(
+        this, tr("Add bookmark"), tr("Name for page %1:").arg(page + 1), QLineEdit::Normal,
+        tr("Page %1").arg(page + 1), &accepted);
+    if (!accepted || title.trimmed().isEmpty())
+        return;
+    if (!m_session->addBookmark(title.trimmed(), page))
+        return;
+}
+
+void OutlinePanel::renameBookmark()
+{
+    if (!m_session || !m_session->isLoaded() || !m_session->document()->isPdf())
+        return;
+    QTreeWidgetItem *item = m_tree->currentItem();
+    if (!item)
+        return;
+    bool accepted = false;
+    const QString title = QInputDialog::getText(this, tr("Rename bookmark"), tr("Name:"),
+                                                QLineEdit::Normal, item->text(0), &accepted);
+    if (!accepted || title.trimmed().isEmpty())
+        return;
+    m_session->renameBookmark(pathOf(item), title.trimmed());
+}
+
+void OutlinePanel::removeBookmark()
+{
+    if (!m_session || !m_session->isLoaded() || !m_session->document()->isPdf())
+        return;
+    QTreeWidgetItem *item = m_tree->currentItem();
+    if (!item)
+        return;
+    m_session->removeBookmark(pathOf(item));
+}
+
+void OutlinePanel::appendNodes(QTreeWidgetItem *parent, const QList<core::OutlineNode> &nodes,
+                               const QList<int> &prefix)
+{
+    for (int index = 0; index < nodes.size(); ++index) {
+        const core::OutlineNode &node = nodes.at(index);
         auto *item = new QTreeWidgetItem;
         item->setText(0, node.title.isEmpty() ? tr("Untitled") : node.title);
         item->setData(0, pageIndexRole, node.pageIndex);
+        QVariantList path;
+        for (int step : prefix)
+            path.append(step);
+        path.append(index);
+        item->setData(0, pathRole, path);
+
+        QFont font = item->font(0);
+        font.setBold(node.bold);
+        font.setItalic(node.italic);
+        item->setFont(0, font);
+        if (node.color.isValid())
+            item->setForeground(0, node.color);
+
         if (node.pageIndex >= 0)
             item->setToolTip(0, tr("Page %1").arg(node.pageIndex + 1));
 
@@ -103,7 +199,7 @@ void OutlinePanel::appendNodes(QTreeWidgetItem *parent, const QList<core::Outlin
         else
             m_tree->addTopLevelItem(item);
 
-        appendNodes(item, node.children);
+        appendNodes(item, node.children, pathOf(item));
         item->setExpanded(node.openByDefault);
     }
 }
@@ -117,10 +213,13 @@ void OutlinePanel::rebuild()
         && !m_session->document()->outline().isEmpty();
 
     if (hasOutline)
-        appendNodes(nullptr, m_session->document()->outline());
+        appendNodes(nullptr, m_session->document()->outline(), {});
 
     if (stack)
         stack->setCurrentWidget(hasOutline ? static_cast<QWidget *>(m_tree) : m_emptyState);
+
+    const bool pdf = m_session && m_session->isLoaded() && m_session->document()->isPdf();
+    m_addButton->setEnabled(pdf);
 }
 
 } // namespace sweet::ui

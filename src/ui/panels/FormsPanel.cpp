@@ -252,8 +252,28 @@ void FormsPanel::addRow(const core::FormField &field)
         break;
     }
     case core::FieldType::Signature: {
-        auto *state = new QLabel(field.signed_ ? tr("Signed") : tr("Not signed"), row);
+        QString text = tr("Not signed");
+        switch (field.signature) {
+        case core::SignatureStatus::Valid:
+            text = tr("Signature is valid");
+            break;
+        case core::SignatureStatus::Invalid:
+            text = tr("Signature is invalid");
+            break;
+        case core::SignatureStatus::BrokenByEdits:
+            text = tr("Signature does not cover the latest changes");
+            break;
+        case core::SignatureStatus::Unchecked:
+            text = field.signed_ ? tr("Signed, but it could not be checked") : tr("Not signed");
+            break;
+        case core::SignatureStatus::Unsigned:
+        case core::SignatureStatus::NotApplicable:
+            text = tr("Not signed");
+            break;
+        }
+        auto *state = new QLabel(text, row);
         state->setObjectName(QStringLiteral("SectionLabel"));
+        state->setWordWrap(true);
         layout->addWidget(state);
         break;
     }

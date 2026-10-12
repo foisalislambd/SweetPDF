@@ -2,6 +2,7 @@
 
 #include "core/pdf/Geometry.h"
 #include "core/pdf/MuContext.h"
+#include "core/pdf/MuVersion.h"
 #include "core/util/Logging.h"
 
 #include <QFile>
@@ -50,6 +51,10 @@ QList<OutlineNode> convertOutline(fz_context *ctx, fz_document *document, fz_out
         node.title = item->title ? QString::fromUtf8(item->title) : QString();
         node.uri = item->uri ? QString::fromUtf8(item->uri) : QString();
         node.openByDefault = item->is_open != 0;
+        node.bold = (item->flags & FZ_OUTLINE_FLAG_BOLD) != 0;
+        node.italic = (item->flags & FZ_OUTLINE_FLAG_ITALIC) != 0;
+        if (item->r != 0 || item->g != 0 || item->b != 0)
+            node.color = QColor(int(item->r), int(item->g), int(item->b));
         node.pageIndex = resolveOutlinePage(ctx, document, item);
         node.pageOffset = QPointF(item->x, item->y);
         node.children = convertOutline(ctx, document, item->down);
@@ -298,7 +303,8 @@ pdf_write_options toWriteOptions(const SaveOptions &options)
 {
     pdf_write_options write = pdf_default_write_options;
     write.do_incremental = options.incremental ? 1 : 0;
-    write.do_linear = options.linearise ? 1 : 0;
+    // MuPDF 1.26 removed linearisation and later versions throw if asked for it.
+    write.do_linear = 0;
     write.do_compress = options.compressStreams ? 1 : 0;
     write.do_compress_images = options.compressStreams ? 1 : 0;
     write.do_compress_fonts = options.compressStreams ? 1 : 0;
@@ -307,6 +313,10 @@ pdf_write_options toWriteOptions(const SaveOptions &options)
     write.do_sanitize = options.cleanContentStreams ? 1 : 0;
     // Garbage collection renumbers objects, which an incremental save cannot do.
     write.do_garbage = (options.garbageCollect && !options.incremental) ? 3 : 0;
+    // Object streams and fresh appearance streams belong on a full rewrite.
+    // An incremental save must leave existing objects, including appearances, alone.
+    write.do_use_objstms = (options.garbageCollect && !options.incremental) ? 1 : 0;
+    write.do_appearance = options.incremental ? 0 : 1;
 
     switch (options.encryption) {
     case SaveOptions::Encryption::Keep:
@@ -366,8 +376,43 @@ QByteArray writeToBytes(fz_context *ctx, pdf_document *pdf, const pdf_write_opti
 
 } // namespace
 
+void PdfDocument::ensureStructure() const
+{
+    if (m_structureChecked || !m_pdf)
+        return;
+    m_structureChecked = true;
+
+    fz_context *ctx = MuContext::forThread();
+    int repaired = 0;
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_var(repaired);
+        fz_try(ctx)
+        {
+#if SWEETPDF_MUPDF_1_28
+            repaired = pdf_check_document(ctx, m_pdf);
+#else
+            pdf_check_document(ctx, m_pdf);
+#endif
+        }
+        fz_catch(ctx)
+        {
+            m_structureWarning = MuContext::lastError(ctx);
+            qCWarning(lcPdf) << "Structure check failed:" << m_structureWarning;
+            return;
+        }
+    }
+
+    m_structureRepaired = repaired != 0;
+    if (m_structureRepaired) {
+        qCWarning(lcPdf) << "MuPDF repaired the PDF structure before editing";
+        discardPageCaches(-1);
+    }
+}
+
 pdf_document *PdfDocument::requirePdf() const
 {
+    ensureStructure();
     if (!m_pdf) {
         throw MuError(QStringLiteral("This file format can be viewed but not edited. "
                                      "Save it as a PDF first."));
@@ -797,7 +842,7 @@ bool PdfDocument::applyRedactions(int pageIndex, const RedactOptions &options)
     return changed;
 }
 
-void PdfDocument::discardPageCaches(int pageIndex)
+void PdfDocument::discardPageCaches(int pageIndex) const
 {
     const std::lock_guard<std::mutex> guard(m_pageMutex);
     auto discard = [](const std::weak_ptr<PdfPage> &weak) {
@@ -854,6 +899,152 @@ void PdfDocument::updateCachedPageSize(int index)
         m_maxPageSize.setWidth(qMax(m_maxPageSize.width(), pageSize.width()));
         m_maxPageSize.setHeight(qMax(m_maxPageSize.height(), pageSize.height()));
     }
+}
+
+namespace {
+
+/// Moves `iter` onto the outline item addressed by `path`. The iterator starts
+/// on the first top-level item when the document has one.
+bool seekOutline(fz_context *ctx, fz_outline_iterator *iter, const QList<int> &path)
+{
+    if (path.isEmpty() || !fz_outline_iterator_item(ctx, iter))
+        return false;
+
+    for (int depth = 0; depth < path.size(); ++depth) {
+        if (depth > 0 && fz_outline_iterator_down(ctx, iter) != 0)
+            return false;
+        for (int step = 0; step < path.at(depth); ++step) {
+            if (fz_outline_iterator_next(ctx, iter) != 0)
+                return false;
+        }
+    }
+    return fz_outline_iterator_item(ctx, iter) != nullptr;
+}
+
+} // namespace
+
+bool PdfDocument::addBookmark(const QString &title, int pageIndex)
+{
+    if (!m_pdf || title.isEmpty() || pageIndex < 0 || pageIndex >= m_pageCount)
+        return false;
+
+    ensureStructure();
+    fz_context *ctx = MuContext::forThread();
+    const QByteArray titleUtf8 = title.toUtf8();
+    bool added = false;
+
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_outline_iterator *iter = nullptr;
+        char *uri = nullptr;
+        fz_var(iter);
+        fz_var(uri);
+        fz_var(added);
+        fz_try(ctx) {
+            const fz_link_dest dest = fz_make_link_dest_xyz(0, pageIndex, 0, 0, 0);
+            uri = fz_format_link_uri(ctx, m_document, dest);
+            iter = fz_new_outline_iterator(ctx, m_document);
+            if (fz_outline_iterator_item(ctx, iter)) {
+                while (fz_outline_iterator_next(ctx, iter) == 0) {
+                }
+            }
+            fz_outline_item item{};
+            item.title = const_cast<char *>(titleUtf8.constData());
+            item.uri = uri;
+            fz_outline_iterator_insert(ctx, iter, &item);
+            added = true;
+        }
+        fz_always(ctx) {
+            fz_drop_outline_iterator(ctx, iter);
+            fz_free(ctx, uri);
+        }
+        fz_catch(ctx) {
+            qCWarning(lcPdf) << "Could not add a bookmark:" << MuContext::lastError(ctx);
+            return false;
+        }
+    }
+
+    if (!added)
+        return false;
+    markEdited();
+    readOutline();
+    return true;
+}
+
+bool PdfDocument::renameBookmark(const QList<int> &path, const QString &title)
+{
+    if (!m_pdf || path.isEmpty() || title.isEmpty())
+        return false;
+
+    ensureStructure();
+    fz_context *ctx = MuContext::forThread();
+    const QByteArray titleUtf8 = title.toUtf8();
+    bool renamed = false;
+
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_outline_iterator *iter = nullptr;
+        fz_var(iter);
+        fz_var(renamed);
+        fz_try(ctx) {
+            iter = fz_new_outline_iterator(ctx, m_document);
+            if (!seekOutline(ctx, iter, path))
+                fz_throw(ctx, FZ_ERROR_ARGUMENT, "bookmark not found");
+            fz_outline_item *current = fz_outline_iterator_item(ctx, iter);
+            fz_outline_item item = *current;
+            item.title = const_cast<char *>(titleUtf8.constData());
+            fz_outline_iterator_update(ctx, iter, &item);
+            renamed = true;
+        }
+        fz_always(ctx)
+            fz_drop_outline_iterator(ctx, iter);
+        fz_catch(ctx) {
+            qCWarning(lcPdf) << "Could not rename a bookmark:" << MuContext::lastError(ctx);
+            return false;
+        }
+    }
+
+    if (!renamed)
+        return false;
+    markEdited();
+    readOutline();
+    return true;
+}
+
+bool PdfDocument::removeBookmark(const QList<int> &path)
+{
+    if (!m_pdf || path.isEmpty())
+        return false;
+
+    ensureStructure();
+    fz_context *ctx = MuContext::forThread();
+    bool removed = false;
+
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_outline_iterator *iter = nullptr;
+        fz_var(iter);
+        fz_var(removed);
+        fz_try(ctx) {
+            iter = fz_new_outline_iterator(ctx, m_document);
+            if (!seekOutline(ctx, iter, path))
+                fz_throw(ctx, FZ_ERROR_ARGUMENT, "bookmark not found");
+            fz_outline_iterator_delete(ctx, iter);
+            removed = true;
+        }
+        fz_always(ctx)
+            fz_drop_outline_iterator(ctx, iter);
+        fz_catch(ctx) {
+            qCWarning(lcPdf) << "Could not remove a bookmark:" << MuContext::lastError(ctx);
+            return false;
+        }
+    }
+
+    if (!removed)
+        return false;
+    markEdited();
+    readOutline();
+    return true;
 }
 
 void PdfDocument::refreshStructure()

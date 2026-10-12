@@ -1,6 +1,7 @@
 #include "core/pdf/PdfForms.h"
 
 #include "core/pdf/Geometry.h"
+#include "core/pdf/MuVersion.h"
 #include "core/pdf/MuContext.h"
 #include "core/pdf/PdfDocument.h"
 #include "core/util/Logging.h"
@@ -83,8 +84,37 @@ FormField describe(fz_context *ctx, pdf_annot *widget, int pageIndex)
 
     if (field.type == FieldType::ComboBox || field.type == FieldType::ListBox)
         field.options = choicesOf(ctx, widget);
-    if (field.type == FieldType::Signature)
+    if (field.type == FieldType::Signature) {
         field.signed_ = pdf_widget_is_signed(ctx, widget) != 0;
+        if (!field.signed_) {
+            field.signature = SignatureStatus::Unsigned;
+        } else {
+            int status = 0;
+            bool checked = false;
+            fz_var(status);
+            fz_var(checked);
+            fz_try(ctx)
+            {
+#if SWEETPDF_MUPDF_1_28
+                status = pdf_validate_signature_widget(ctx, widget);
+#else
+                status = pdf_validate_signature(ctx, widget);
+#endif
+                checked = true;
+            }
+            fz_catch(ctx)
+                checked = false;
+
+            if (!checked)
+                field.signature = SignatureStatus::Unchecked;
+            else if (status == 0)
+                field.signature = SignatureStatus::Valid;
+            else if (status < 0)
+                field.signature = SignatureStatus::BrokenByEdits;
+            else
+                field.signature = SignatureStatus::Invalid;
+        }
+    }
 
     return field;
 }
@@ -176,6 +206,7 @@ bool hasFields(const PdfDocument &document)
 
 bool setValue(PdfDocument &document, int pageIndex, int objectNumber, const QString &value)
 {
+    document.ensureStructure();
     const QByteArray utf8 = value.toUtf8();
     bool accepted = false;
 
@@ -229,6 +260,7 @@ QString onStateOf(const PdfDocument &document, int pageIndex, int objectNumber)
 
 bool resetAll(PdfDocument &document)
 {
+    document.ensureStructure();
     pdf_document *pdf = document.pdfHandle();
     if (!pdf)
         return false;
@@ -255,6 +287,7 @@ bool resetAll(PdfDocument &document)
 
 bool flatten(PdfDocument &document, bool annotationsToo, bool widgetsToo)
 {
+    document.ensureStructure();
     pdf_document *pdf = document.pdfHandle();
     if (!pdf || (!annotationsToo && !widgetsToo))
         return false;

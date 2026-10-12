@@ -266,7 +266,7 @@ sudo apt-get install -y --no-install-recommends \
   qt6-base-dev qt6-base-dev-tools qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools libgl1-mesa-dev \
   libmupdf-dev libtesseract-dev libleptonica-dev libsqlite3-dev \
   libfreetype-dev libharfbuzz-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev \
-  zlib1g-dev libmujs-dev libgumbo-dev tesseract-ocr tesseract-ocr-eng
+  zlib1g-dev libbrotli-dev libmujs-dev libgumbo-dev tesseract-ocr tesseract-ocr-eng
 
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build
@@ -274,7 +274,9 @@ cmake --build build
 ```
 
 Older Ubuntu releases ship MuPDF 1.24, which is missing some of the form and
-link functions used here.
+link functions used here. For MuPDF 1.28.5 (Markdown, structure repair that
+reports what it changed, and the current signature-check API) run
+`./scripts/build-mupdf.sh` before configuring; CMake picks up `mupdf/install`.
 
 ### Fedora
 
@@ -474,9 +476,11 @@ and icon caches on install so the menu entry appears immediately.
 8. **Export** — images, plain text, HTML, printing, compression. *Done.*
 9. **Real text editing** — re-flow existing text runs with their original fonts,
   instead of replacing them with a text box.
-10. **Cryptographic signatures** — PKCS#7 signing and validation of signature fields.
+10. **Cryptographic signatures** — validation of existing signature fields is done.
+   Creating a PKCS#7 signature is not.
 11. **Conversion** — Office formats, in and out.
-12. **Attachments and layers** — the two sidebar panels that are still placeholders.
+12. **Attachments and layers** — list embedded files and show or hide optional
+   content. *Done.*
 
 
 

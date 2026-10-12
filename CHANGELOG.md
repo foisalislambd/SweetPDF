@@ -14,6 +14,28 @@ Everything below is in `main` and will go out with the first tagged release.
 
 ### Added
 
+- **MuPDF 1.28** — SweetPDF builds against MuPDF 1.28.5 when `scripts/build-mupdf.sh`
+  has installed it, and still compiles with the 1.27 packages distributions
+  ship. Opening a file now includes Markdown, HTML, plain text and FictionBook.
+  Text extraction turns on MuPDF's dehyphenation and accurate glyph boxes.
+  Before an edit or a save, the file is scanned with `pdf_check_document`; when
+  1.28 repairs the structure, the status bar says so.
+- **Find** — the find bar has a regular-expression mode (`.*`) that uses
+  MuPDF's search matcher, including case-insensitive patterns.
+- **Signatures** — signed form fields are checked with MuPDF and reported as
+  valid, invalid, or out of date after unsaved changes. Creating a PKCS#7
+  signature is still not implemented.
+- **Files and layers** — the sidebar lists embedded files, including file
+  attachments that live on a page, and can save one out. Optional-content
+  layers can be shown or hidden, and a document's named layer presets can be
+  applied.
+- **Bookmarks** — outline entries keep the colour, bold and italic the PDF
+  specifies. A page can be bookmarked, renamed or removed, and that is saved
+  with the file.
+- **Saving** — full saves regenerate annotation appearances and pack objects
+  into object streams. Linearisation is no longer requested: MuPDF 1.26 removed
+  it and later versions refuse the save if it is asked for. Changing an
+  annotation's colour, text or box rebuilds its appearance stream.
 - **Viewer** — PDF, XPS, EPUB, CBZ and SVG; single, continuous and two-page
   layouts; fit page and fit width; animated zoom and scrolling; thumbnails,
   bookmarks and document properties; clickable links; tabs, recent files and
@@ -51,6 +73,6 @@ Everything below is in `main` and will go out with the first tagged release.
 
 - Editing existing text replaces it rather than re-flowing the original runs
   with their fonts.
-- Cryptographic (PKCS#7) signature signing and validation is not implemented.
-- The attachments and layers panels are placeholders.
+- Cryptographic (PKCS#7) signature signing is not implemented. Validation of
+  an existing signature field is.
 - macOS builds are not produced by CI yet; build from source in the meantime.

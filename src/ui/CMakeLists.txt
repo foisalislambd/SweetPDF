@@ -30,6 +30,8 @@ qt_add_library(sweetpdf_ui STATIC
     panels/OutlinePanel.h    panels/OutlinePanel.cpp
     panels/CommentsPanel.h   panels/CommentsPanel.cpp
     panels/FormsPanel.h      panels/FormsPanel.cpp
+    panels/AttachmentsPanel.h panels/AttachmentsPanel.cpp
+    panels/LayersPanel.h     panels/LayersPanel.cpp
     panels/PropertiesPanel.h panels/PropertiesPanel.cpp
     panels/ToolOptionsPanel.h panels/ToolOptionsPanel.cpp
 

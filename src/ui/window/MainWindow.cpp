@@ -27,6 +27,7 @@
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFrame>
@@ -953,6 +954,7 @@ void MainWindow::createCentralArea()
     connect(m_sidebar, &Sidebar::extractRequested, this, &MainWindow::extractPages);
     connect(m_sidebar, &Sidebar::insertFileRequested, this, &MainWindow::insertPagesFromFile);
     connect(m_sidebar, &Sidebar::statusMessage, this, &MainWindow::report);
+    connect(m_sidebar, &Sidebar::saveAttachmentRequested, this, &MainWindow::saveEmbeddedFile);
     connect(m_sidebar, &Sidebar::panelVisibilityChanged, this, [this](bool visible) {
         QAction *toggle = action(QStringLiteral("toggleSidebar"));
         if (toggle->isChecked() != visible) {
@@ -1192,6 +1194,7 @@ bool MainWindow::openFile(const QString &path)
     m_tabs->setCurrentIndex(index);
     showWelcomeIfEmpty();
 
+    connect(session, &core::DocumentSession::userNotice, this, &MainWindow::report);
     connect(session, &core::DocumentSession::modifiedChanged, this, [this, session](bool dirty) {
         for (int tab = 0; tab < m_tabs->count(); ++tab) {
             if (viewAt(tab) && viewAt(tab)->session() == session) {
@@ -1211,7 +1214,8 @@ void MainWindow::openFileDialog()
 {
     const QStringList paths = QFileDialog::getOpenFileNames(
         this, tr("Open PDF"), QString(),
-        tr("Documents (*.pdf *.xps *.epub *.cbz *.svg);;PDF files (*.pdf);;All files (*)"));
+        tr("Documents (*.pdf *.xps *.epub *.cbz *.svg *.md *.markdown *.html *.htm *.xhtml *.txt *.fb2);;"
+           "PDF files (*.pdf);;Markdown (*.md *.markdown);;All files (*)"));
     for (const QString &path : paths)
         openFile(path);
 }
@@ -1354,7 +1358,8 @@ void MainWindow::runHomeTask(const QString &taskId)
     if (m_tabs->count() == 0) {
         const QString path = QFileDialog::getOpenFileName(
             this, tr("Choose a document"), QString(),
-            tr("Documents (*.pdf *.xps *.epub *.cbz *.svg);;PDF files (*.pdf);;All files (*)"));
+            tr("Documents (*.pdf *.xps *.epub *.cbz *.svg *.md *.markdown *.html *.htm *.xhtml *.txt *.fb2);;"
+           "PDF files (*.pdf);;Markdown (*.md *.markdown);;All files (*)"));
         if (path.isEmpty() || !openFile(path))
             return;
     }
@@ -1902,6 +1907,31 @@ void MainWindow::extractPages(const QList<int> &pages)
     } catch (const std::exception &failure) {
         reportError(tr("Could not extract pages"), QString::fromUtf8(failure.what()));
     }
+}
+
+void MainWindow::saveEmbeddedFile(int index)
+{
+    auto *session = currentSession();
+    if (!session || !session->isLoaded())
+        return;
+
+    const QList<core::EmbeddedFile> files = session->document()->embeddedFiles();
+    if (index < 0 || index >= files.size())
+        return;
+
+    const core::EmbeddedFile &file = files.at(index);
+    const QString suggested = file.name.isEmpty() ? tr("attachment") : QFileInfo(file.name).fileName();
+    const QString path = QFileDialog::getSaveFileName(this, tr("Save embedded file"), suggested);
+    if (path.isEmpty())
+        return;
+
+    const QByteArray bytes = session->document()->embeddedFileContents(index);
+    QSaveFile output(path);
+    if (!output.open(QIODevice::WriteOnly) || output.write(bytes) != bytes.size() || !output.commit()) {
+        reportError(tr("Could not write the file"), output.errorString());
+        return;
+    }
+    report(tr("Saved %1.").arg(QFileInfo(path).fileName()));
 }
 
 void MainWindow::mergeDocuments()

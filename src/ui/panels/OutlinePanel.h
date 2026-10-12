@@ -5,6 +5,7 @@
 
 class QTreeWidget;
 class QTreeWidgetItem;
+class QPushButton;
 
 namespace sweet::core {
 class DocumentSession;
@@ -25,10 +26,16 @@ public:
 
 private:
     void rebuild();
-    void appendNodes(QTreeWidgetItem *parent, const QList<sweet::core::OutlineNode> &nodes);
+    void appendNodes(QTreeWidgetItem *parent, const QList<sweet::core::OutlineNode> &nodes,
+                     const QList<int> &prefix);
+    QList<int> pathOf(QTreeWidgetItem *item) const;
+    void addBookmark();
+    void renameBookmark();
+    void removeBookmark();
 
     QTreeWidget *m_tree = nullptr;
     QWidget *m_emptyState = nullptr;
+    QPushButton *m_addButton = nullptr;
     sweet::core::DocumentSession *m_session = nullptr;
 };
 

@@ -1,7 +1,7 @@
 # Building from source
 
 Requirements shared by all platforms: **CMake**, **Ninja**, **Qt 6** (Widgets +
-SVG), **MuPDF** (≥ 1.27 APIs used by SweetPDF), **SQLite**, and ideally
+SVG), **MuPDF** (1.27 or newer; 1.28.5 is what `scripts/build-mupdf.sh` installs), **SQLite**, and ideally
 **Tesseract** + language data for OCR.
 
 Ghostscript is only needed to generate the sample PDF for tests.
@@ -14,7 +14,7 @@ sudo apt-get install -y --no-install-recommends \
   qt6-base-dev qt6-base-dev-tools qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools \
   libgl1-mesa-dev libmupdf-dev libtesseract-dev libleptonica-dev libsqlite3-dev \
   libfreetype-dev libharfbuzz-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev \
-  zlib1g-dev libmujs-dev libgumbo-dev \
+  zlib1g-dev libbrotli-dev libmujs-dev libgumbo-dev \
   tesseract-ocr tesseract-ocr-eng ghostscript
 
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -23,6 +23,8 @@ cmake --build build
 ```
 
 Older Ubuntu MuPDF packages (for example 1.24) are missing APIs SweetPDF needs.
+`./scripts/build-mupdf.sh` builds MuPDF 1.28.5 into `mupdf/install`, which
+CMake prefers over the distribution package.
 
 ### Fedora
 

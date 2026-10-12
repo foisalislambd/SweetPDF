@@ -47,6 +47,15 @@ endif()
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Svg Concurrent PrintSupport)
 qt_standard_project_setup()
 
+# scripts/build-mupdf.sh installs the current upstream release here. Prefer it
+# over the distribution package, which is often a release behind.
+if(EXISTS "${CMAKE_SOURCE_DIR}/mupdf/install/include/mupdf/fitz/version.h")
+    set(MuPDF_ROOT "${CMAKE_SOURCE_DIR}/mupdf/install" CACHE PATH "MuPDF installation prefix" FORCE)
+    unset(MuPDF_INCLUDE_DIR CACHE)
+    unset(MuPDF_LIBRARY CACHE)
+    unset(MuPDF_THIRD_LIBRARY CACHE)
+endif()
+
 find_package(MuPDF REQUIRED)
 find_package(SQLite3 REQUIRED)
 

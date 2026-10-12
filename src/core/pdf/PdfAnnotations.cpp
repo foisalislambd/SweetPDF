@@ -296,6 +296,7 @@ QList<Annotation> all(const PdfDocument &document)
 
 int add(PdfDocument &document, const AnnotationSpec &spec)
 {
+    document.ensureStructure();
     pdf_document *pdf = document.pdfHandle();
     if (!pdf || spec.pageIndex < 0 || spec.pageIndex >= document.pageCount())
         return 0;
@@ -406,6 +407,7 @@ int add(PdfDocument &document, const AnnotationSpec &spec)
 
 bool remove(PdfDocument &document, int pageIndex, int objectNumber)
 {
+    document.ensureStructure();
     pdf_document *pdf = document.pdfHandle();
     if (!pdf || pageIndex < 0 || pageIndex >= document.pageCount())
         return false;
@@ -447,6 +449,7 @@ bool remove(PdfDocument &document, int pageIndex, int objectNumber)
 bool update(PdfDocument &document, int pageIndex, int objectNumber, const QColor &color,
             qreal opacity, const QString &contents)
 {
+    document.ensureStructure();
     const bool changed = withAnnotation(
         document, pageIndex, objectNumber, [&](fz_context *ctx, pdf_page *, pdf_annot *annot) {
             float components[4] = { 0, 0, 0, 0 };
@@ -466,6 +469,7 @@ bool update(PdfDocument &document, int pageIndex, int objectNumber, const QColor
 
 bool setRect(PdfDocument &document, int pageIndex, int objectNumber, const QRectF &rect)
 {
+    document.ensureStructure();
     const bool changed = withAnnotation(
         document, pageIndex, objectNumber, [&](fz_context *ctx, pdf_page *, pdf_annot *annot) {
             pdf_set_annot_rect(ctx, annot, toFzRect(rect));

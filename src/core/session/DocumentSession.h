@@ -150,6 +150,16 @@ public:
     /// Writes a field value without touching the undo stack. For the commands.
     bool writeFormValue(int pageIndex, int objectNumber, const QString &value);
 
+    /// Shows or hides an optional-content layer and refreshes every page.
+    bool setLayerEnabled(int index, bool enabled);
+
+    /// Applies a named layer configuration and refreshes every page.
+    bool selectLayerConfig(int index);
+
+    bool addBookmark(const QString &title, int pageIndex);
+    bool renameBookmark(const QList<int> &path, const QString &title);
+    bool removeBookmark(const QList<int> &path);
+
     // --- Structural edits -------------------------------------------------
 
     /// Runs `edit` on the document and pushes one undoable step for it, taking
@@ -208,6 +218,12 @@ Q_SIGNALS:
     void markupStyleChanged();
     void savedTo(const QString &path);
 
+    /// A one-shot note about the document, such as a structure repair.
+    void userNotice(const QString &message);
+
+    /// The bookmark tree changed. Pages did not.
+    void outlineChanged();
+
 private:
     /// Swaps in a document and tells everyone. Used by load and by structural
     /// undo, which re-opens the document from bytes.
@@ -235,6 +251,9 @@ private:
     QString m_author;
     int m_selectedAnnotation = 0;
     int m_selectedAnnotationPage = -1;
+    bool m_structureNotified = false;
+
+    void publishStructureNotice();
 };
 
 } // namespace sweet::core

@@ -260,6 +260,27 @@ int main(int argc, char *argv[])
             const QString text = exporter::documentText(*document);
             check(text.contains(QStringLiteral("SweetPDF")), "the text export contains page text");
 
+            check(document->addBookmark(QStringLiteral("Start"), 0), "a bookmark can be added");
+            check(!document->outline().isEmpty(), "the new bookmark is in the outline");
+            check(document->outline().last().title == QStringLiteral("Start"),
+                  "the bookmark keeps its title");
+            check(document->renameBookmark({ int(document->outline().size()) - 1 },
+                                           QStringLiteral("Opening")),
+                  "a bookmark can be renamed");
+            check(document->outline().last().title == QStringLiteral("Opening"),
+                  "the renamed bookmark is what was typed");
+            const int bookmarkCount = document->outline().size();
+            check(document->removeBookmark({ bookmarkCount - 1 }), "a bookmark can be removed");
+            check(document->outline().size() == bookmarkCount - 1, "the bookmark is gone");
+
+            PdfPage::FindOptions pattern;
+            pattern.regularExpression = true;
+            const PdfPage::FindResult hits = document->page(0)->findText(QStringLiteral("Sweet.*"), pattern);
+            check(hits.error.isEmpty() && !hits.ranges.isEmpty(),
+                  "a regular expression matches page text");
+            const PdfPage::FindResult broken = document->page(0)->findText(QStringLiteral("("), pattern);
+            check(!broken.error.isEmpty(), "a broken regular expression is reported");
+
             const QString html = QDir(workDir).filePath(QStringLiteral("export.html"));
             exporter::toHtml(*document, html);
             check(QFileInfo(html).size() > 0, "an HTML export is written");

@@ -177,4 +177,33 @@ QList<TextRange> PageText::findAll(const QString &needle, Qt::CaseSensitivity se
     return hits;
 }
 
+TextRange PageText::covering(const QList<QRectF> &areas) const
+{
+    int from = -1;
+    int to = -1;
+    for (int index = 0; index < m_boxes.size(); ++index) {
+        const QRectF box = m_boxes.at(index);
+        if (!box.isValid())
+            continue;
+
+        bool hit = false;
+        for (const QRectF &area : areas) {
+            // Quads from the searcher and glyph boxes disagree by a fraction of
+            // a point, so the area is grown slightly before the test.
+            if (area.adjusted(-1.0, -1.0, 1.0, 1.0).intersects(box)) {
+                hit = true;
+                break;
+            }
+        }
+        if (!hit)
+            continue;
+        if (from < 0)
+            from = index;
+        to = index + 1;
+    }
+    if (from < 0)
+        return {};
+    return { from, to };
+}
+
 } // namespace sweet::core

@@ -1,7 +1,9 @@
 #include "ui/panels/Sidebar.h"
 
+#include "ui/panels/AttachmentsPanel.h"
 #include "ui/panels/CommentsPanel.h"
 #include "ui/panels/FormsPanel.h"
+#include "ui/panels/LayersPanel.h"
 #include "ui/panels/OutlinePanel.h"
 #include "ui/panels/ThumbnailPanel.h"
 #include "ui/theme/Theme.h"
@@ -17,37 +19,6 @@ namespace sweet::ui {
 namespace {
 
 constexpr int railWidth = 50;
-
-QWidget *makePlaceholder(const QString &iconName, const QString &title, const QString &hint,
-                         QWidget *parent)
-{
-    auto *page = new QWidget(parent);
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(22, 32, 22, 22);
-    layout->setSpacing(10);
-    layout->addStretch(1);
-
-    auto *glyph = new QLabel(page);
-    glyph->setAlignment(Qt::AlignCenter);
-    glyph->setPixmap(Theme::instance()
-                         .icon(iconName, Theme::instance().palette().textMuted)
-                         .pixmap(32, 32));
-    layout->addWidget(glyph);
-
-    auto *heading = new QLabel(title, page);
-    heading->setObjectName(QStringLiteral("PanelTitle"));
-    heading->setAlignment(Qt::AlignCenter);
-    layout->addWidget(heading);
-
-    auto *body = new QLabel(hint, page);
-    body->setObjectName(QStringLiteral("SectionLabel"));
-    body->setAlignment(Qt::AlignCenter);
-    body->setWordWrap(true);
-    layout->addWidget(body);
-
-    layout->addStretch(2);
-    return page;
-}
 
 } // namespace
 
@@ -117,10 +88,13 @@ Sidebar::Sidebar(QWidget *parent)
     connect(m_thumbnails, &ThumbnailPanel::insertFileRequested, this,
             &Sidebar::insertFileRequested);
     connect(m_thumbnails, &ThumbnailPanel::statusMessage, this, &Sidebar::statusMessage);
-    m_stack->addWidget(makePlaceholder(QStringLiteral("attachment"), tr("Attachments"),
-                                       tr("Files embedded in the PDF appear here."), m_stack));
-    m_stack->addWidget(makePlaceholder(QStringLiteral("layers"), tr("Layers"),
-                                       tr("Optional content groups appear here."), m_stack));
+    m_attachments = new AttachmentsPanel(m_stack);
+    m_layers = new LayersPanel(m_stack);
+    m_stack->addWidget(m_attachments);
+    m_stack->addWidget(m_layers);
+    connect(m_attachments, &AttachmentsPanel::saveRequested, this,
+            &Sidebar::saveAttachmentRequested);
+    connect(m_attachments, &AttachmentsPanel::statusMessage, this, &Sidebar::statusMessage);
 
     addRailButton(Panel::Pages, QStringLiteral("pages"), tr("Pages"));
     addRailButton(Panel::Bookmarks, QStringLiteral("bookmark"), tr("Marks"));
@@ -219,6 +193,8 @@ void Sidebar::setSession(core::DocumentSession *session)
     m_outline->setSession(session);
     m_comments->setSession(session);
     m_forms->setSession(session);
+    m_attachments->setSession(session);
+    m_layers->setSession(session);
 }
 
 } // namespace sweet::ui

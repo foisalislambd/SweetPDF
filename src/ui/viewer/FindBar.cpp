@@ -58,6 +58,9 @@ FindBar::FindBar(core::DocumentSession *session, QWidget *parent)
 
     m_caseButton = makeToggle(tr("Match case"));
     m_wordsButton = makeToggle(tr("Whole words only"));
+    m_regexButton = makeToggle(tr("Regular expression"));
+    m_regexButton->setText(QStringLiteral(".*"));
+    m_regexButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
     m_previousButton = makeToggle(tr("Previous match (Shift+F3)"));
     m_previousButton->setCheckable(false);
     m_nextButton = makeToggle(tr("Next match (F3)"));
@@ -65,8 +68,8 @@ FindBar::FindBar(core::DocumentSession *session, QWidget *parent)
     m_closeButton = makeToggle(tr("Close (Esc)"));
     m_closeButton->setCheckable(false);
 
-    for (QToolButton *button :
-         { m_caseButton, m_wordsButton, m_previousButton, m_nextButton, m_closeButton }) {
+    for (QToolButton *button : { m_caseButton, m_wordsButton, m_regexButton, m_previousButton,
+                                 m_nextButton, m_closeButton }) {
         button->setParent(this);
         row->addWidget(button);
     }
@@ -85,6 +88,10 @@ FindBar::FindBar(core::DocumentSession *session, QWidget *parent)
     connect(m_field, &QLineEdit::returnPressed, this, &FindBar::findNext);
     connect(m_caseButton, &QToolButton::toggled, this, &FindBar::restartSearch);
     connect(m_wordsButton, &QToolButton::toggled, this, &FindBar::restartSearch);
+    connect(m_regexButton, &QToolButton::toggled, this, [this](bool on) {
+        m_wordsButton->setEnabled(!on);
+        restartSearch();
+    });
     connect(m_nextButton, &QToolButton::clicked, this, &FindBar::findNext);
     connect(m_previousButton, &QToolButton::clicked, this, &FindBar::findPrevious);
     connect(m_closeButton, &QToolButton::clicked, this, &FindBar::dismiss);
@@ -141,6 +148,7 @@ void FindBar::restartSearch()
     m_needle = m_field->text();
     m_nextPageToScan = 0;
     m_pendingJumpToFirst = true;
+    m_searchError.clear();
 
     Q_EMIT matchesChanged(m_byPage);
 
@@ -179,16 +187,21 @@ void FindBar::scanNextChunk()
         if (!page)
             continue;
 
-        const auto text = page->textLayer();
-        if (!text)
+        core::PdfPage::FindOptions options;
+        options.matchCase = sensitivity == Qt::CaseSensitive;
+        options.wholeWords = wholeWords && !m_regexButton->isChecked();
+        options.regularExpression = m_regexButton->isChecked();
+        const core::PdfPage::FindResult found = page->findText(m_needle, options);
+        if (!found.error.isEmpty()) {
+            m_searchError = found.error;
+            m_scanner->stop();
+            break;
+        }
+        if (found.ranges.isEmpty())
             continue;
 
-        const QList<core::TextRange> found = text->findAll(m_needle, sensitivity, wholeWords);
-        if (found.isEmpty())
-            continue;
-
-        m_byPage.insert(pageIndex, found);
-        for (const core::TextRange &range : found)
+        m_byPage.insert(pageIndex, found.ranges);
+        for (const core::TextRange &range : found.ranges)
             m_hits.append({ pageIndex, range });
     }
 
@@ -246,7 +259,13 @@ void FindBar::updateStatus()
         return;
     }
     if (m_hits.isEmpty()) {
-        m_status->setText(m_scanner->isActive() ? tr("Searching…") : tr("No results"));
+        if (!m_searchError.isEmpty() && !m_scanner->isActive()) {
+            m_status->setText(tr("Invalid pattern"));
+            m_status->setToolTip(m_searchError);
+        } else {
+            m_status->setToolTip(QString());
+            m_status->setText(m_scanner->isActive() ? tr("Searching…") : tr("No results"));
+        }
         return;
     }
 

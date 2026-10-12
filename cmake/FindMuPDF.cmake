@@ -50,15 +50,18 @@ if(MuPDF_FOUND AND NOT TARGET MuPDF::MuPDF)
     set(_mupdf_link_libs "")
     if(MuPDF_THIRD_LIBRARY)
         list(APPEND _mupdf_link_libs "${MuPDF_THIRD_LIBRARY}")
-    else()
-        # No vendored bundle: resolve the codec stack from the system.
-        foreach(_dep freetype harfbuzz jpeg openjp2 jbig2dec z)
-            find_library(_mupdf_dep_${_dep} NAMES ${_dep})
-            if(_mupdf_dep_${_dep})
-                list(APPEND _mupdf_link_libs "${_mupdf_dep_${_dep}}")
-            endif()
-        endforeach()
     endif()
+
+    # A USE_SYSTEM_LIBS MuPDF build still ships libmupdf-third.a for the pieces
+    # it vendors (mujs, lcms) and expects the codecs from the system. Linking
+    # them is harmless for a shared libmupdf that already pulls the same
+    # libraries in, and it is required for the static 1.28.5 build.
+    foreach(_dep freetype harfbuzz jpeg openjp2 jbig2dec z brotlidec brotlienc brotlicommon)
+        find_library(_mupdf_dep_${_dep} NAMES ${_dep})
+        if(_mupdf_dep_${_dep})
+            list(APPEND _mupdf_link_libs "${_mupdf_dep_${_dep}}")
+        endif()
+    endforeach()
 
     find_library(_mupdf_mujs NAMES mujs)
     if(_mupdf_mujs)

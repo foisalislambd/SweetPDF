@@ -72,6 +72,7 @@ private:
     QToolButton *m_nextButton = nullptr;
     QToolButton *m_caseButton = nullptr;
     QToolButton *m_wordsButton = nullptr;
+    QToolButton *m_regexButton = nullptr;
     QToolButton *m_closeButton = nullptr;
     QLabel *m_status = nullptr;
 
@@ -83,6 +84,7 @@ private:
     QHash<int, QList<sweet::core::TextRange>> m_byPage;
     int m_current = -1;
     bool m_pendingJumpToFirst = false;
+    QString m_searchError;
 };
 
 } // namespace sweet::ui
