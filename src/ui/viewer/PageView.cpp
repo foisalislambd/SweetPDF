@@ -335,13 +335,20 @@ void PageView::updateFitZoom()
         ? widthScale
         : qMin(widthScale, availableHeight / page.height());
 
+    // The first fit often happens while every page still fits on screen, so the
+    // viewport centre is the middle of the document. Keeping that point would
+    // leave the reader on a later page once the real zoom is applied.
+    const int keepPage = m_session->currentPage();
+    m_fittingZoom = true;
     m_session->setZoom(zoom);
     applyZoom();
+    m_fittingZoom = false;
+    goToPage(keepPage);
 }
 
 void PageView::updateCurrentPageFromViewport()
 {
-    if (m_items.isEmpty())
+    if (m_fittingZoom || m_items.isEmpty())
         return;
 
     // The page covering most of the viewport is the one being read.

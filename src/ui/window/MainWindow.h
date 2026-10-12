@@ -150,6 +150,7 @@ private:
     LayoutMode layoutModeForWidth(int width) const;
     void applyLayoutMode(bool force = false);
     void clampSplitterSizes();
+    void syncSidebarWidth();
 
     void closeTab(int index);
     PageView *currentView() const;

@@ -346,10 +346,11 @@ void ThumbnailPanel::rebuild()
     m_syncing = true;
     m_list->clear();
     m_scales.clear();
-    m_syncing = false;
 
-    if (!m_session || !m_session->document())
+    if (!m_session || !m_session->document()) {
+        m_syncing = false;
         return;
+    }
 
     const auto &document = m_session->document();
     const int rotation = m_session->rotation();
@@ -366,6 +367,7 @@ void ThumbnailPanel::rebuild()
         item->setToolTip(tr("Page %1").arg(index + 1));
     }
 
+    m_syncing = false;
     syncSelection(m_session->currentPage());
     requestVisibleThumbnails();
 }

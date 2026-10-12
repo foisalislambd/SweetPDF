@@ -18,7 +18,7 @@
 namespace sweet::ui {
 namespace {
 
-constexpr int railWidth = 46;
+constexpr int kRailWidth = 46;
 
 } // namespace
 
@@ -27,13 +27,19 @@ Sidebar::Sidebar(QWidget *parent)
 {
     setObjectName(QStringLiteral("Sidebar"));
 
+    setLayoutDirection(Qt::LeftToRight);
+
     auto *row = new QHBoxLayout(this);
     row->setContentsMargins(0, 0, 0, 0);
     row->setSpacing(0);
+    row->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    row->setDirection(QBoxLayout::LeftToRight);
 
     auto *rail = new QWidget(this);
     rail->setObjectName(QStringLiteral("SidebarRail"));
-    rail->setFixedWidth(railWidth);
+    rail->setLayoutDirection(Qt::LeftToRight);
+    rail->setFixedWidth(kRailWidth);
+    rail->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
     m_railLayout = new QVBoxLayout(rail);
     m_railLayout->setContentsMargins(2, 4, 2, 4);
     m_railLayout->setSpacing(1);
@@ -130,7 +136,7 @@ void Sidebar::addRailButton(Panel panel, const QString &iconName, const QString 
     button->setToolButtonStyle(Qt::ToolButtonIconOnly);
     button->setIcon(icon(iconName));
     button->setIconSize(QSize(22, 22));
-    button->setFixedSize(railWidth - 6, 36);
+    button->setFixedSize(kRailWidth - 6, 36);
     button->setToolTip(label);
     button->setAccessibleName(label);
     button->setFocusPolicy(Qt::TabFocus);
@@ -145,6 +151,11 @@ void Sidebar::addRailButton(Panel panel, const QString &iconName, const QString 
 bool Sidebar::isPanelVisible() const
 {
     return m_content->isVisible();
+}
+
+int Sidebar::railWidth() const
+{
+    return kRailWidth;
 }
 
 void Sidebar::showPanel(Panel panel)
@@ -169,6 +180,14 @@ void Sidebar::setPanelVisible(bool visible)
         return;
 
     m_content->setVisible(visible);
+    // A hidden panel must not leave a dark gap that pushes the icons inward.
+    // Collapsed, the sidebar is exactly the rail and stays on the left edge.
+    if (visible) {
+        setMinimumWidth(kRailWidth + 160);
+        setMaximumWidth(QWIDGETSIZE_MAX);
+    } else {
+        setFixedWidth(kRailWidth);
+    }
     if (!visible) {
         if (auto *button = m_rail->checkedButton()) {
             m_rail->setExclusive(false);

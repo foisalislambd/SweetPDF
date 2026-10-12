@@ -135,7 +135,7 @@ MainWindow::MainWindow(QWidget *parent)
     setAcceptDrops(true);
     // Narrower than this and the page area disappears under chrome; the layout
     // modes below keep it usable from here up to a large monitor.
-    setMinimumSize(1024, 640);
+    setMinimumSize(720, 480);
     resize(1360, 880);
 
     createActions();
@@ -1136,6 +1136,7 @@ void MainWindow::createCentralArea()
     m_splitter->setStretchFactor(0, 0);
     m_splitter->setStretchFactor(1, 1);
     m_splitter->setStretchFactor(2, 0);
+    m_splitter->setCollapsible(0, false);
     m_splitter->setSizes({ 248, 760, 300 });
 
     connect(m_tabs, &QTabWidget::currentChanged, this,
@@ -1155,6 +1156,7 @@ void MainWindow::createCentralArea()
             const QSignalBlocker blocker(toggle);
             toggle->setChecked(visible);
         }
+        syncSidebarWidth();
     });
 
     m_center->setCurrentWidget(m_welcome);
@@ -1859,6 +1861,7 @@ void MainWindow::applyLayoutMode(bool force)
     }
     updateInspectorVisibility();
 
+    syncSidebarWidth();
     clampSplitterSizes();
 }
 
@@ -1890,6 +1893,44 @@ void MainWindow::clampSplitterSizes()
         deficit -= fromLeft;
         sizes[2] = qMax(0, sizes[2] - deficit);
     }
+    const int rail = m_sidebar ? m_sidebar->railWidth() : 0;
+    if (rail > 0 && sizes[0] < rail) {
+        const int need = rail - sizes[0];
+        sizes[0] = rail;
+        sizes[1] = qMax(0, sizes[1] - need);
+    }
+    m_splitter->setSizes(sizes);
+}
+
+void MainWindow::syncSidebarWidth()
+{
+    if (!m_splitter || !m_sidebar)
+        return;
+
+    QList<int> sizes = m_splitter->sizes();
+    if (sizes.size() < 3)
+        return;
+
+    const int rail = m_sidebar->railWidth();
+    if (!m_sidebar->isPanelVisible()) {
+        const int extra = sizes[0] - rail;
+        if (extra > 0) {
+            sizes[0] = rail;
+            sizes[1] += extra;
+            m_splitter->setSizes(sizes);
+        }
+        return;
+    }
+
+    constexpr int openWidth = 248;
+    if (sizes[0] >= openWidth)
+        return;
+    const int need = openWidth - sizes[0];
+    const int take = qMin(need, qMax(0, sizes[1] - 280));
+    if (take <= 0)
+        return;
+    sizes[0] += take;
+    sizes[1] -= take;
     m_splitter->setSizes(sizes);
 }
 

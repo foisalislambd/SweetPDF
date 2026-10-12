@@ -180,6 +180,7 @@ private:
 
     int m_indicatedPage = -1;    ///< Page currently drawn with the accent ring.
     bool m_syncingCurrentPage = false;
+    bool m_fittingZoom = false;
     bool m_temporaryPan = false; ///< Middle button held down.
 
     /// Text selection. Kept as a page plus a character range rather than as

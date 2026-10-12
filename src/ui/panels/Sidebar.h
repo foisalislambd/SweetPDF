@@ -39,6 +39,10 @@ public:
     Panel currentPanel() const noexcept { return m_currentPanel; }
     bool isPanelVisible() const;
 
+    /// Width of the icon strip. The strip stays this wide, flush with the left
+    /// edge, whether or not the panel beside it is open.
+    int railWidth() const;
+
 public Q_SLOTS:
     void showPanel(sweet::ui::Sidebar::Panel panel);
     void setPanelVisible(bool visible);
