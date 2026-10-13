@@ -99,15 +99,8 @@ int colorComponents(const QColor &color, float out[4])
     return 3;
 }
 
-QColor colorOf(fz_context *ctx, pdf_annot *annot)
+QColor colorFromComponents(int count, const float components[4])
 {
-    int count = 0;
-    float components[4] = { 0, 0, 0, 0 };
-    fz_try(ctx)
-        pdf_annot_color(ctx, annot, &count, components);
-    fz_catch(ctx)
-        return {};
-
     switch (count) {
     case 1:
         return QColor::fromRgbF(components[0], components[0], components[0]);
@@ -124,6 +117,64 @@ QColor colorOf(fz_context *ctx, pdf_annot *annot)
     }
 }
 
+QColor colorOf(fz_context *ctx, pdf_annot *annot)
+{
+    int count = 0;
+    float components[4] = { 0, 0, 0, 0 };
+    fz_try(ctx)
+        pdf_annot_color(ctx, annot, &count, components);
+    fz_catch(ctx)
+        return {};
+
+    return colorFromComponents(count, components);
+}
+
+/// FreeText stores the ink colour in the default appearance. `/C` is the box
+/// fill, so reading that would report the background instead of the text.
+QColor freeTextColor(fz_context *ctx, pdf_annot *annot)
+{
+    const char *font = nullptr;
+    float size = 0;
+    int count = 0;
+    float components[4] = { 0, 0, 0, 0 };
+    fz_try(ctx)
+        pdf_annot_default_appearance(ctx, annot, &font, &size, &count, components);
+    fz_catch(ctx)
+        return {};
+    return colorFromComponents(count, components);
+}
+
+/// Writes the text colour into `/DA` and drops `/C`. A FreeText `/C` is painted
+/// as a solid fill behind the glyphs, so a black text colour becomes a black bar.
+void applyFreeTextColor(fz_context *ctx, pdf_annot *annot, const QColor &color, qreal fontSize)
+{
+    pdf_dict_del(ctx, pdf_annot_obj(ctx, annot), PDF_NAME(C));
+
+    float components[4] = { 0, 0, 0, 0 };
+    int count = colorComponents(color, components);
+    if (count == 0) {
+        count = 3;
+    }
+
+    const char *font = nullptr;
+    float size = 0;
+    int existingCount = 0;
+    float existing[4] = { 0, 0, 0, 0 };
+    fz_try(ctx)
+        pdf_annot_default_appearance(ctx, annot, &font, &size, &existingCount, existing);
+    fz_catch(ctx) {
+        font = nullptr;
+        size = 0;
+    }
+    if (!font || !font[0])
+        font = "Helv";
+    if (fontSize > 0)
+        size = float(fontSize);
+    if (size <= 0)
+        size = 11;
+    pdf_set_annot_default_appearance(ctx, annot, font, size, count, components);
+}
+
 Annotation describe(fz_context *ctx, pdf_annot *annot, int pageIndex)
 {
     Annotation described;
@@ -131,7 +182,8 @@ Annotation describe(fz_context *ctx, pdf_annot *annot, int pageIndex)
     described.objectNumber = pdf_to_num(ctx, pdf_annot_obj(ctx, annot));
     described.type = fromMuType(pdf_annot_type(ctx, annot));
     described.rect = toQRectF(pdf_bound_annot(ctx, annot));
-    described.color = colorOf(ctx, annot);
+    described.color = described.type == AnnotationType::FreeText ? freeTextColor(ctx, annot)
+                                                                 : colorOf(ctx, annot);
     described.editable = described.type != AnnotationType::Widget
         && described.type != AnnotationType::Other && described.type != AnnotationType::Link;
 
@@ -313,9 +365,13 @@ int add(PdfDocument &document, const AnnotationSpec &spec)
             page = pdf_load_page(ctx, pdf, spec.pageIndex);
             pdf_annot *annot = pdf_create_annot(ctx, page, toMuType(spec.type));
 
-            float components[4] = { 0, 0, 0, 0 };
-            if (const int count = colorComponents(spec.color, components))
-                pdf_set_annot_color(ctx, annot, count, components);
+            // FreeText `/C` is the box fill, not the ink. Setting it to the text
+            // colour (black, for a replacement) paints a solid bar over the line.
+            if (spec.type != AnnotationType::FreeText) {
+                float components[4] = { 0, 0, 0, 0 };
+                if (const int count = colorComponents(spec.color, components))
+                    pdf_set_annot_color(ctx, annot, count, components);
+            }
             if (spec.opacity < 1.0)
                 pdf_set_annot_opacity(ctx, annot, float(spec.opacity));
 
@@ -369,10 +425,7 @@ int add(PdfDocument &document, const AnnotationSpec &spec)
                 if (spec.type == AnnotationType::Stamp && !spec.iconName.isEmpty())
                     pdf_set_annot_icon_name(ctx, annot, spec.iconName.toUtf8().constData());
                 if (spec.type == AnnotationType::FreeText) {
-                    float text[4] = { 0, 0, 0, 0 };
-                    const int count = colorComponents(spec.color, text);
-                    pdf_set_annot_default_appearance(ctx, annot, "Helv", float(spec.fontSize),
-                                                     count, text);
+                    applyFreeTextColor(ctx, annot, spec.color, spec.fontSize);
                     // Replacement text should look like page content, not a boxed note.
                     pdf_set_annot_border_width(ctx, annot, float(qMax(0.0, spec.borderWidth)));
                 }
@@ -458,9 +511,13 @@ bool update(PdfDocument &document, int pageIndex, int objectNumber, const QColor
     document.ensureStructure();
     const bool changed = withAnnotation(
         document, pageIndex, objectNumber, [&](fz_context *ctx, pdf_page *, pdf_annot *annot) {
-            float components[4] = { 0, 0, 0, 0 };
-            if (const int count = colorComponents(color, components))
-                pdf_set_annot_color(ctx, annot, count, components);
+            if (pdf_annot_type(ctx, annot) == PDF_ANNOT_FREE_TEXT)
+                applyFreeTextColor(ctx, annot, color, 0);
+            else {
+                float components[4] = { 0, 0, 0, 0 };
+                if (const int count = colorComponents(color, components))
+                    pdf_set_annot_color(ctx, annot, count, components);
+            }
             pdf_set_annot_opacity(ctx, annot, float(qBound(0.0, opacity, 1.0)));
             pdf_set_annot_contents(ctx, annot, contents.toUtf8().constData());
             pdf_set_annot_modification_date(ctx, annot, QDateTime::currentSecsSinceEpoch());

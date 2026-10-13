@@ -150,6 +150,47 @@ int main(int argc, char *argv[])
                        "the deletion is reflected in the list");
         }
 
+        // --- Edited text stays glyphs, not a black bar --------------------
+        std::printf("text colour\n");
+        {
+            auto document = PdfDocument::open(source);
+            auto page = document->page(0);
+
+            AnnotationSpec spec;
+            spec.type = AnnotationType::FreeText;
+            spec.pageIndex = 0;
+            // Sits on the light panel of the sample page, clear of the heading.
+            spec.rect = QRectF(80, 360, 150, 18);
+            spec.contents = QStringLiteral("Edited");
+            spec.color = Qt::black;
+            spec.fontSize = 12;
+            spec.borderWidth = 0;
+            const int created = annotations::add(*document, spec);
+            check(created != 0, "replacement text can be created");
+
+            const QList<Annotation> found = annotations::onPage(*document, 0);
+            const auto text = std::find_if(found.cbegin(), found.cend(), [](const Annotation &a) {
+                return a.type == AnnotationType::FreeText;
+            });
+            check(text != found.cend() && text->color == Qt::black,
+                  "the text colour stays black");
+
+            const QImage image = page->render(1.0);
+            const QRect area = spec.rect.toRect();
+            int dark = 0;
+            int pale = 0;
+            for (int y = area.top(); y < area.bottom() && y < image.height(); ++y) {
+                for (int x = area.left(); x < area.right() && x < image.width(); ++x) {
+                    if (qGray(image.pixel(x, y)) < 40)
+                        ++dark;
+                    else if (qGray(image.pixel(x, y)) > 180)
+                        ++pale;
+                }
+            }
+            check(dark > 0, "the replacement glyphs are drawn");
+            check(pale > dark, "the replacement is not a solid black bar");
+        }
+
         // --- Page operations ----------------------------------------------
         std::printf("pages\n");
         {
