@@ -284,12 +284,6 @@ void WelcomeView::buildHeader(QVBoxLayout *column)
     }
     titleRow->addStretch(1);
     text->addLayout(titleRow);
-
-    auto *tagline = makeLabel(tr("Read, annotate, edit and organise PDF documents. Everything "
-                                 "happens on this computer - nothing is uploaded anywhere."),
-                              TextRole::Body, Ink::Muted, header);
-    tagline->setWordWrap(true);
-    text->addWidget(tagline);
     row->addLayout(text, 1);
 
     // The ribbon is hidden on this screen, so the two window-level commands that
