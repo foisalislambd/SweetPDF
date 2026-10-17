@@ -1,5 +1,6 @@
 #include "ui/window/MainWindow.h"
 
+#include "core/pdf/OfficeExchange.h"
 #include "core/pdf/PdfDocument.h"
 #include "core/pdf/PdfExport.h"
 #include "core/session/DocumentSession.h"
@@ -52,6 +53,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPainter>
+#include <QPair>
 #include <QPrintDialog>
 #include <QPrinter>
 #include <QProgressDialog>
@@ -321,6 +323,7 @@ void MainWindow::createActions()
           QKeySequence() },
         { "addLine", tr("Line"), QStringLiteral("line"), core::Tool::Line, QKeySequence() },
         { "addArrow", tr("Arrow"), QStringLiteral("arrow"), core::Tool::Arrow, QKeySequence() },
+        { "addCallout", tr("Callout"), QStringLiteral("note"), core::Tool::Callout, QKeySequence() },
         { "toolStamp", tr("Stamp"), QStringLiteral("stamp"), core::Tool::Stamp, QKeySequence() },
         { "toolRedact", tr("Mark Redaction"), QStringLiteral("redact"), core::Tool::Redact,
           QKeySequence() },
@@ -463,6 +466,32 @@ void MainWindow::createActions()
                       QStringLiteral("text-select"), QKeySequence(), [this] { addHeaderFooter(); });
     addDocumentAction(QStringLiteral("cropPage"), tr("Crop Page"), QStringLiteral("crop"),
                       QKeySequence(), [this] { cropCurrentPage(); });
+    addDocumentAction(QStringLiteral("pageSize"), tr("Page Size"), QStringLiteral("pages"),
+                      QKeySequence(), [this] { resizePages(); });
+    addDocumentAction(QStringLiteral("deskew"), tr("Deskew"), QStringLiteral("rotate-right"),
+                      QKeySequence(), [this] { deskewPages(); });
+    addDocumentAction(QStringLiteral("insertScan"), tr("Insert Scan"), QStringLiteral("add-image"),
+                      QKeySequence(), [this] { insertScannedPages(); });
+    addDocumentAction(QStringLiteral("alignAnnotations"), tr("Align"), QStringLiteral("pages"),
+                      QKeySequence(), [this] { alignAnnotations(); });
+    addDocumentAction(QStringLiteral("copyTable"), tr("Copy as Table"), QStringLiteral("copy"),
+                      QKeySequence(), [this] { copySelectionAsTable(); });
+    addDocumentAction(QStringLiteral("batch"), tr("Batch"), QStringLiteral("pages"), QKeySequence(),
+                      [this] { runBatch(); });
+    addDocumentAction(QStringLiteral("sanitize"), tr("Sanitize"), QStringLiteral("shield"),
+                      QKeySequence(), [this] { sanitizeDocument(); });
+    addDocumentAction(QStringLiteral("prepareShare"), tr("Prepare to Share"), QStringLiteral("shield"),
+                      QKeySequence(), [this] { prepareToShare(); });
+    addDocumentAction(QStringLiteral("makeEditable"), tr("Make Editable"), QStringLiteral("edit-text"),
+                      QKeySequence(), [this] { makeEditableCopy(); });
+    addDocumentAction(QStringLiteral("importOffice"), tr("Import Office"), QStringLiteral("open"),
+                      QKeySequence(), [this] { importOffice(); });
+    addDocumentAction(QStringLiteral("exportDocx"), tr("Word"), QStringLiteral("export"),
+                      QKeySequence(), [this] { exportOffice(QStringLiteral("docx")); });
+    addDocumentAction(QStringLiteral("exportXlsx"), tr("Excel"), QStringLiteral("export"),
+                      QKeySequence(), [this] { exportOffice(QStringLiteral("xlsx")); });
+    addDocumentAction(QStringLiteral("exportPptx"), tr("PowerPoint"), QStringLiteral("export"),
+                      QKeySequence(), [this] { exportOffice(QStringLiteral("pptx")); });
     addDocumentAction(QStringLiteral("compare"), tr("Compare"), QStringLiteral("pages"),
                       QKeySequence(), [this] { compareDocument(); });
     addDocumentAction(QStringLiteral("encrypt"), tr("Protect"), QStringLiteral("lock"),
@@ -710,6 +739,7 @@ void MainWindow::createActions()
     shortCaption(QStringLiteral("toolEditText"), tr("Edit"));
     shortCaption(QStringLiteral("addLine"), tr("Line"));
     shortCaption(QStringLiteral("addArrow"), tr("Arrow"));
+    shortCaption(QStringLiteral("addCallout"), tr("Callout"));
     shortCaption(QStringLiteral("toolStamp"), tr("Stamp"));
     shortCaption(QStringLiteral("toolRedact"), tr("Redact"));
     shortCaption(QStringLiteral("applyRedactions"), tr("Apply"));
@@ -731,6 +761,12 @@ void MainWindow::createActions()
     shortCaption(QStringLiteral("toggleProperties"), tr("Props"));
     shortCaption(QStringLiteral("headerFooter"), tr("Header"));
     shortCaption(QStringLiteral("cropPage"), tr("Crop"));
+    shortCaption(QStringLiteral("pageSize"), tr("Size"));
+    shortCaption(QStringLiteral("insertScan"), tr("Scan"));
+    shortCaption(QStringLiteral("prepareShare"), tr("Share"));
+    shortCaption(QStringLiteral("makeEditable"), tr("Editable"));
+    shortCaption(QStringLiteral("importOffice"), tr("Office"));
+    shortCaption(QStringLiteral("copyTable"), tr("Table"));
     shortCaption(QStringLiteral("replaceAll"), tr("Replace"));
     shortCaption(QStringLiteral("addFormField"), tr("Field"));
     shortCaption(QStringLiteral("manageLinks"), tr("Links"));
@@ -775,6 +811,10 @@ void MainWindow::createAppMenu()
     exportMenu->addAction(action(QStringLiteral("exportText")));
     exportMenu->addAction(action(QStringLiteral("exportHtml")));
     exportMenu->addAction(action(QStringLiteral("exportComments")));
+    exportMenu->addAction(action(QStringLiteral("exportDocx")));
+    exportMenu->addAction(action(QStringLiteral("exportXlsx")));
+    exportMenu->addAction(action(QStringLiteral("exportPptx")));
+    file->addAction(action(QStringLiteral("importOffice")));
     file->addSeparator();
     file->addAction(action(QStringLiteral("print")));
     file->addSeparator();
@@ -787,6 +827,8 @@ void MainWindow::createAppMenu()
     edit->addAction(action(QStringLiteral("redo")));
     edit->addSeparator();
     edit->addAction(action(QStringLiteral("copy")));
+    edit->addAction(action(QStringLiteral("copyTable")));
+    edit->addAction(action(QStringLiteral("alignAnnotations")));
     edit->addAction(action(QStringLiteral("selectAll")));
     edit->addAction(action(QStringLiteral("find")));
     edit->addAction(action(QStringLiteral("findNext")));
@@ -837,6 +879,11 @@ void MainWindow::createAppMenu()
     page->addAction(action(QStringLiteral("rotatePagesRight")));
     page->addAction(action(QStringLiteral("rotateAllPages")));
     page->addAction(action(QStringLiteral("reversePages")));
+    page->addAction(action(QStringLiteral("cropPage")));
+    page->addAction(action(QStringLiteral("pageSize")));
+    page->addAction(action(QStringLiteral("deskew")));
+    page->addAction(action(QStringLiteral("insertScan")));
+    page->addAction(action(QStringLiteral("headerFooter")));
     page->addAction(action(QStringLiteral("deleteOddEven")));
     page->addAction(action(QStringLiteral("grayscale")));
     page->addSeparator();
@@ -856,6 +903,10 @@ void MainWindow::createAppMenu()
     tools->addSeparator();
     tools->addAction(action(QStringLiteral("forms")));
     tools->addAction(action(QStringLiteral("flatten")));
+    tools->addAction(action(QStringLiteral("sanitize")));
+    tools->addAction(action(QStringLiteral("prepareShare")));
+    tools->addAction(action(QStringLiteral("batch")));
+    tools->addAction(action(QStringLiteral("makeEditable")));
 
     m_appMenu->addSeparator();
 
@@ -943,6 +994,7 @@ void MainWindow::createRibbon()
     editShapes->addAction(action(QStringLiteral("addEllipse")));
     editShapes->addAction(action(QStringLiteral("addLine")));
     editShapes->addAction(action(QStringLiteral("addArrow")));
+    editShapes->addAction(action(QStringLiteral("addCallout")));
     RibbonGroup *editLinks = editPage->addGroup(tr("Links"));
     editLinks->addAction(action(QStringLiteral("addLink")));
     editLinks->addAction(action(QStringLiteral("manageLinks")));
@@ -971,6 +1023,8 @@ void MainWindow::createRibbon()
     commentManage->addAction(action(QStringLiteral("duplicateSelection")));
     commentManage->addAction(action(QStringLiteral("copySelectionPages")));
     commentManage->addAction(action(QStringLiteral("removeComments")));
+    commentManage->addAction(action(QStringLiteral("alignAnnotations")));
+    commentManage->addAction(action(QStringLiteral("addCallout")));
 
     RibbonPage *pagePage = m_ribbon->addPage(tr("Page"));
     RibbonGroup *organise = pagePage->addGroup(tr("Organise"));
@@ -981,6 +1035,9 @@ void MainWindow::createRibbon()
     organise->addCompactAction(action(QStringLiteral("duplicatePage")));
     organise->addCompactAction(action(QStringLiteral("cropPage")));
     organise->addCompactAction(action(QStringLiteral("headerFooter")));
+    organise->addCompactAction(action(QStringLiteral("pageSize")));
+    organise->addCompactAction(action(QStringLiteral("deskew")));
+    organise->addCompactAction(action(QStringLiteral("insertScan")));
     organise->addCompactAction(action(QStringLiteral("reversePages")));
     RibbonGroup *transform = pagePage->addGroup(tr("Rotate Pages"));
     transform->addAction(action(QStringLiteral("rotatePagesLeft")));
@@ -1031,10 +1088,19 @@ void MainWindow::createRibbon()
     recognise->addAction(action(QStringLiteral("ocr")));
     RibbonGroup *optimise = toolsPage->addGroup(tr("Optimise"));
     optimise->addAction(action(QStringLiteral("compress")));
+    optimise->addAction(action(QStringLiteral("batch")));
+    optimise->addAction(action(QStringLiteral("sanitize")));
+    optimise->addAction(action(QStringLiteral("prepareShare")));
     RibbonGroup *exportGroup = toolsPage->addGroup(tr("Export"));
     exportGroup->addAction(action(QStringLiteral("exportImages")));
     exportGroup->addAction(action(QStringLiteral("exportText")));
     exportGroup->addAction(action(QStringLiteral("exportHtml")));
+    exportGroup->addCompactAction(action(QStringLiteral("exportDocx")));
+    exportGroup->addCompactAction(action(QStringLiteral("exportXlsx")));
+    exportGroup->addCompactAction(action(QStringLiteral("exportPptx")));
+    exportGroup->addCompactAction(action(QStringLiteral("importOffice")));
+    exportGroup->addCompactAction(action(QStringLiteral("makeEditable")));
+    exportGroup->addCompactAction(action(QStringLiteral("copyTable")));
     RibbonGroup *formsGroup = toolsPage->addGroup(tr("Forms"));
     formsGroup->addAction(action(QStringLiteral("forms")));
     formsGroup->addAction(action(QStringLiteral("addFormField")));
@@ -2009,6 +2075,8 @@ void MainWindow::updateForCurrentDocument()
 
     for (QAction *entry : std::as_const(m_documentActions))
         entry->setEnabled(hasDocument);
+    action(QStringLiteral("batch"))->setEnabled(true);
+    action(QStringLiteral("importOffice"))->setEnabled(true);
 
     m_sidebar->setSession(session);
     m_properties->setSession(session);
@@ -3059,7 +3127,8 @@ void MainWindow::addHeaderFooter()
     HeaderFooterDialog dialog(session->pageCount(), session->currentPage(), this);
     if (dialog.exec() != QDialog::Accepted)
         return;
-    if (dialog.headerText().isEmpty() && dialog.footerText().isEmpty() && !dialog.pageNumbers()) {
+    if (dialog.headerText().isEmpty() && dialog.footerText().isEmpty() && !dialog.pageNumbers()
+        && !dialog.batesNumbers()) {
         report(tr("Nothing to add."));
         return;
     }
@@ -3096,6 +3165,13 @@ void MainWindow::addHeaderFooter()
         if (dialog.pageNumbers()) {
             const QString number = tr("Page %1 of %2").arg(pageIndex + 1).arg(total);
             footer = footer.isEmpty() ? number : footer + QStringLiteral("  ") + number;
+        }
+        if (dialog.batesNumbers()) {
+            const int sequence = dialog.allPages() ? pageIndex : 0;
+            const QString bates = dialog.batesPrefix()
+                + QStringLiteral("%1").arg(dialog.batesStart() + sequence, dialog.batesDigits(),
+                                           10, QChar(u'0'));
+            footer = footer.isEmpty() ? bates : footer + QStringLiteral("  ") + bates;
         }
         place(expand(footer, pageIndex + 1, total), size.height() - font - 36);
     }
@@ -3142,6 +3218,538 @@ void MainWindow::cropCurrentPage()
         reportError(tr("Could not crop the page"), error);
     else
         report(tr("Cropped page %1.").arg(session->currentPage() + 1));
+}
+
+void MainWindow::resizePages()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument(true))
+        return;
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Page size"));
+    auto *form = new QFormLayout;
+    auto *paper = new QComboBox(&dialog);
+    paper->addItem(tr("A4"), QSizeF(595.28, 841.89));
+    paper->addItem(tr("Letter"), QSizeF(612, 792));
+    paper->addItem(tr("Legal"), QSizeF(612, 1008));
+    paper->addItem(tr("A3"), QSizeF(841.89, 1190.55));
+    auto *scope = new QComboBox(&dialog);
+    scope->addItem(tr("Current page"), false);
+    scope->addItem(tr("Every page"), true);
+    form->addRow(tr("Size"), paper);
+    form->addRow(tr("Pages"), scope);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel | QDialogButtonBox::Ok, &dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    auto *column = new QVBoxLayout(&dialog);
+    column->addLayout(form);
+    column->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    const QSizeF size = paper->currentData().toSizeF();
+    const bool all = scope->currentData().toBool();
+    const int current = session->currentPage();
+    QString error;
+    const bool resized = session->applyStructuralEdit(
+        tr("Page size"),
+        [size, all, current](core::PdfDocument &document) {
+            if (all) {
+                for (int index = 0; index < document.pageCount(); ++index)
+                    document.setPageSize(index, size);
+            } else {
+                document.setPageSize(current, size);
+            }
+        },
+        &error);
+    if (resized)
+        report(tr("Page size updated. Content outside the new box is clipped."));
+    else
+        reportError(tr("Could not resize the page"), error);
+}
+
+void MainWindow::deskewPages()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument(true))
+        return;
+
+    QMessageBox box(this);
+    box.setWindowTitle(tr("Deskew"));
+    box.setText(tr("Straighten the current page, or every page that looks tilted?"));
+    QPushButton *currentButton = box.addButton(tr("Current"), QMessageBox::AcceptRole);
+    QPushButton *everyButton = box.addButton(tr("Every page"), QMessageBox::AcceptRole);
+    box.addButton(QMessageBox::Cancel);
+    box.exec();
+    if (box.clickedButton() != currentButton && box.clickedButton() != everyButton)
+        return;
+
+    QList<QPair<int, qreal>> jobs;
+    const int first = box.clickedButton() == currentButton ? session->currentPage() : 0;
+    const int last = box.clickedButton() == currentButton ? session->currentPage()
+                                                          : session->pageCount() - 1;
+    for (int index = first; index <= last; ++index) {
+        auto page = session->document()->page(index);
+        qreal degrees = 0;
+        if (!page || !page->textLayer() || !page->textLayer()->baselineDegrees(&degrees))
+            continue;
+        if (qAbs(degrees) < 0.25 || qAbs(degrees) > 15.0)
+            continue;
+        jobs.append({ index, -degrees });
+    }
+    if (jobs.isEmpty()) {
+        report(tr("No tilted text was found."));
+        return;
+    }
+
+    QString error;
+    const bool done = session->applyStructuralEdit(
+        tr("Deskew"),
+        [jobs](core::PdfDocument &document) {
+            for (const auto &job : jobs)
+                document.rotatePageContent(job.first, job.second);
+        },
+        &error);
+    if (done)
+        report(tr("Straightened %n page(s).", nullptr, jobs.size()));
+    else
+        reportError(tr("Could not deskew"), error);
+}
+
+void MainWindow::insertScannedPages()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument(true))
+        return;
+
+    QStringList paths = QFileDialog::getOpenFileNames(
+        this, tr("Insert scanned pages"), QString(),
+        tr("Images (*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff)"));
+    QList<QImage> images;
+    if (paths.isEmpty()) {
+        const QImage pasted = QApplication::clipboard()->image();
+        if (!pasted.isNull()
+            && QMessageBox::question(this, tr("Insert scan"),
+                                     tr("Insert the image on the clipboard as a page?"),
+                                     QMessageBox::Yes | QMessageBox::No)
+                   == QMessageBox::Yes)
+            images.append(pasted);
+    }
+
+    for (const QString &path : paths) {
+        QImageReader reader(path);
+        reader.setAutoTransform(true);
+        const QImage image = reader.read();
+        if (!image.isNull())
+            images.append(image);
+    }
+    if (images.isEmpty()) {
+        report(tr("Choose a scanned image, or copy one to the clipboard."));
+        return;
+    }
+
+    const auto pageSize = [](const QImage &image) {
+        const double dpiX = image.dotsPerMeterX() > 0 ? image.dotsPerMeterX() * 0.0254 : 96.0;
+        const double dpiY = image.dotsPerMeterY() > 0 ? image.dotsPerMeterY() * 0.0254 : 96.0;
+        return QSizeF(qMax(36.0, image.width() * 72.0 / dpiX),
+                      qMax(36.0, image.height() * 72.0 / dpiY));
+    };
+
+    const int at = session->currentPage();
+    session->undoStack()->beginMacro(tr("Insert scan"));
+    QString error;
+    bool placed = true;
+    for (int index = 0; placed && index < images.size(); ++index) {
+        const QSizeF size = pageSize(images.at(index));
+        const int where = at + index;
+        placed = session->applyStructuralEdit(
+            tr("Insert scanned page"),
+            [where, size](core::PdfDocument &document) { document.insertBlankPage(where, size); },
+            &error);
+        if (placed) {
+            placed = session->addImage(where, images.at(index), QRectF(QPointF(0, 0), size),
+                                       tr("Insert scan"), &error);
+        }
+    }
+    session->undoStack()->endMacro();
+    if (placed)
+        report(tr("Inserted %n scanned page(s).", nullptr, images.size()));
+    else
+        reportError(tr("Could not insert the scan"), error);
+}
+
+void MainWindow::alignAnnotations()
+{
+    auto *session = currentSession();
+    PageView *view = currentView();
+    if (!session || !view || !requireEditableDocument())
+        return;
+
+    QList<core::Annotation> picked = view->groupedAnnotations();
+    if (picked.isEmpty() && session->selectedAnnotation() != 0) {
+        core::Annotation only;
+        only.pageIndex = session->selectedAnnotationPage();
+        only.objectNumber = session->selectedAnnotation();
+        picked.append(only);
+    }
+    QList<core::Annotation> group;
+    for (const core::Annotation &item : picked) {
+        for (const core::Annotation &annotation : session->annotationsOnPage(item.pageIndex)) {
+            if (annotation.objectNumber == item.objectNumber)
+                group.append(annotation);
+        }
+    }
+    if (group.isEmpty()) {
+        report(tr("Select a comment first. Shift-click adds more."));
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Align"));
+    auto *form = new QFormLayout;
+    auto *mode = new QComboBox(&dialog);
+    mode->addItem(tr("Left edges"), 0);
+    mode->addItem(tr("Horizontal centres"), 1);
+    mode->addItem(tr("Right edges"), 2);
+    mode->addItem(tr("Top edges"), 3);
+    mode->addItem(tr("Vertical centres"), 4);
+    mode->addItem(tr("Bottom edges"), 5);
+    mode->addItem(tr("Centre on the page"), 6);
+    form->addRow(tr("Align"), mode);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel | QDialogButtonBox::Ok, &dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    auto *column = new QVBoxLayout(&dialog);
+    column->addLayout(form);
+    column->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    const int which = mode->currentData().toInt();
+    qreal left = group.first().rect.left();
+    qreal right = group.first().rect.right();
+    qreal top = group.first().rect.top();
+    qreal bottom = group.first().rect.bottom();
+    qreal midX = group.first().rect.center().x();
+    qreal midY = group.first().rect.center().y();
+    for (const core::Annotation &annotation : group) {
+        left = qMin(left, annotation.rect.left());
+        right = qMax(right, annotation.rect.right());
+        top = qMin(top, annotation.rect.top());
+        bottom = qMax(bottom, annotation.rect.bottom());
+    }
+    midX = (left + right) / 2.0;
+    midY = (top + bottom) / 2.0;
+    if (group.size() == 1) {
+        const QSizeF page = session->document()->pageSizePoints(group.first().pageIndex);
+        left = 36;
+        right = page.width() - 36;
+        top = 36;
+        bottom = page.height() - 36;
+        midX = page.width() / 2.0;
+        midY = page.height() / 2.0;
+    }
+
+    session->undoStack()->beginMacro(tr("Align"));
+    for (const core::Annotation &annotation : group) {
+        QRectF rect = annotation.rect;
+        const QSizeF page = session->document()->pageSizePoints(annotation.pageIndex);
+        switch (which) {
+        case 0:
+            rect.moveLeft(group.size() == 1 ? 36 : left);
+            break;
+        case 1:
+            rect.moveCenter(QPointF(group.size() == 1 ? page.width() / 2.0 : midX, rect.center().y()));
+            break;
+        case 2:
+            rect.moveRight(group.size() == 1 ? page.width() - 36 : right);
+            break;
+        case 3:
+            rect.moveTop(group.size() == 1 ? 36 : top);
+            break;
+        case 4:
+            rect.moveCenter(QPointF(rect.center().x(), group.size() == 1 ? page.height() / 2.0 : midY));
+            break;
+        case 5:
+            rect.moveBottom(group.size() == 1 ? page.height() - 36 : bottom);
+            break;
+        default:
+            rect.moveCenter(QPointF(page.width() / 2.0, page.height() / 2.0));
+            break;
+        }
+        session->setAnnotationRect(annotation.pageIndex, annotation.objectNumber, rect);
+    }
+    session->undoStack()->endMacro();
+    report(tr("Aligned %n item(s).", nullptr, group.size()));
+}
+
+void MainWindow::copySelectionAsTable()
+{
+    PageView *view = currentView();
+    if (!view || !view->hasSelection()) {
+        report(tr("Drag across the table first."));
+        return;
+    }
+    const QString csv = view->selectedTableCsv();
+    if (csv.isEmpty()) {
+        report(tr("That selection does not look like a table."));
+        return;
+    }
+    QApplication::clipboard()->setText(csv);
+    const QString path = QFileDialog::getSaveFileName(this, tr("Save table"), QString(),
+                                                      tr("CSV (*.csv)"));
+    if (!path.isEmpty()) {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            reportError(tr("Could not save the table"), file.errorString());
+            return;
+        }
+        file.write(csv.toUtf8());
+    }
+    report(tr("Copied the table. %1").arg(path.isEmpty() ? tr("It is on the clipboard.")
+                                                          : tr("Also saved.")));
+}
+
+void MainWindow::runBatch()
+{
+    const QStringList files = QFileDialog::getOpenFileNames(this, tr("PDFs to process"), QString(),
+                                                           tr("PDF documents (*.pdf)"));
+    if (files.isEmpty())
+        return;
+    const QString directory = QFileDialog::getExistingDirectory(this, tr("Save the results in"));
+    if (directory.isEmpty())
+        return;
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Batch"));
+    auto *form = new QFormLayout;
+    auto *job = new QComboBox(&dialog);
+    job->addItem(tr("Compress"), int(core::batch::Job::Compress));
+    job->addItem(tr("Grayscale"), int(core::batch::Job::Grayscale));
+    job->addItem(tr("Strip hidden data"), int(core::batch::Job::Strip));
+    form->addRow(tr("Do this"), job);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel | QDialogButtonBox::Ok, &dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    auto *column = new QVBoxLayout(&dialog);
+    column->addLayout(form);
+    column->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    const auto which = static_cast<core::batch::Job>(job->currentData().toInt());
+    QList<core::batch::Item> results;
+    runWithProgress(tr("Processing PDFs"), [&](const auto &progress) {
+        results = core::batch::run(files, directory, which, progress);
+        return true;
+    });
+    int ok = 0;
+    QStringList failed;
+    for (const core::batch::Item &item : results) {
+        if (item.ok)
+            ++ok;
+        else
+            failed.append(QFileInfo(item.input).fileName());
+    }
+    if (failed.isEmpty())
+        report(tr("Finished %n file(s).", nullptr, ok));
+    else
+        report(tr("Finished %1. Failed: %2").arg(ok).arg(failed.join(QStringLiteral(", "))));
+}
+
+void MainWindow::sanitizeDocument()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument(true))
+        return;
+    const auto choice = QMessageBox::question(
+        this, tr("Sanitize"),
+        tr("Remove the title, author, keywords, metadata, JavaScript and embedded files? "
+           "Page content stays."),
+        QMessageBox::Cancel | QMessageBox::Yes, QMessageBox::Cancel);
+    if (choice != QMessageBox::Yes)
+        return;
+    QString error;
+    if (session->applyStructuralEdit(tr("Sanitize"),
+                                    [](core::PdfDocument &document) { document.stripHiddenData(); },
+                                    &error))
+        report(tr("Hidden data removed."));
+    else
+        reportError(tr("Could not sanitize the document"), error);
+}
+
+void MainWindow::prepareToShare()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument(true))
+        return;
+    const auto choice = QMessageBox::question(
+        this, tr("Prepare to share"),
+        tr("Strip metadata and scripts, then bake comments and fields into the page so they "
+           "cannot be edited. This is not a PDF/A conversion."),
+        QMessageBox::Cancel | QMessageBox::Yes, QMessageBox::Cancel);
+    if (choice != QMessageBox::Yes)
+        return;
+    QString error;
+    const bool done = session->applyStructuralEdit(
+        tr("Prepare to share"),
+        [](core::PdfDocument &document) {
+            document.stripHiddenData();
+            core::forms::flatten(document, true, true);
+        },
+        &error);
+    if (done)
+        report(tr("The document is ready to share. Comments are now page content."));
+    else
+        reportError(tr("Could not prepare the document"), error);
+}
+
+void MainWindow::makeEditableCopy()
+{
+    auto *session = currentSession();
+    if (!session || !session->isLoaded())
+        return;
+    if (session->document()->isPdf()) {
+        report(tr("This file is already a PDF, so it can be edited."));
+        return;
+    }
+
+    QList<QImage> images;
+    QList<QSizeF> sizes;
+    bool cancelled = false;
+    runWithProgress(tr("Making an editable PDF"), [&](const auto &progress) {
+        const int count = session->pageCount();
+        for (int index = 0; index < count; ++index) {
+            if (!progress(index, count)) {
+                cancelled = true;
+                return false;
+            }
+            auto page = session->document()->page(index);
+            if (!page)
+                continue;
+            images.append(page->render(2.0));
+            sizes.append(session->document()->pageSizePoints(index));
+        }
+        progress(count, count);
+        return true;
+    });
+    if (cancelled || images.isEmpty())
+        return;
+
+    std::shared_ptr<core::PdfDocument> document;
+    try {
+        document = core::PdfDocument::createEmpty(sizes.first());
+    } catch (const std::exception &failure) {
+        reportError(tr("Could not create a PDF"), QString::fromUtf8(failure.what()));
+        return;
+    }
+    auto *copy = new core::DocumentSession(this);
+    copy->takeDocument(std::move(document), QString());
+    prepareNewSession(copy);
+    finishOpening(copy, QString(), false);
+    copy->undoStack()->beginMacro(tr("Editable copy"));
+    QString error;
+    bool placed = copy->addImage(0, images.first(), QRectF(QPointF(0, 0), sizes.first()),
+                                 tr("Editable copy"), &error);
+    for (int index = 1; placed && index < images.size(); ++index) {
+        const QSizeF size = sizes.at(index);
+        placed = copy->applyStructuralEdit(
+            tr("Editable copy"),
+            [index, size](core::PdfDocument &created) { created.insertBlankPage(index, size); },
+            &error);
+        if (placed)
+            placed = copy->addImage(index, images.at(index), QRectF(QPointF(0, 0), size),
+                                    tr("Editable copy"), &error);
+    }
+    copy->undoStack()->endMacro();
+    if (!placed)
+        reportError(tr("Could not build the editable copy"), error);
+    else
+        report(tr("Opened a PDF copy you can mark up. Save it when you want to keep it."));
+}
+
+void MainWindow::importOffice()
+{
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Import an Office file"), QString(),
+        tr("Office files (*.docx *.xlsx *.pptx)"));
+    if (path.isEmpty())
+        return;
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        reportError(tr("Could not open the file"), file.errorString());
+        return;
+    }
+    const QByteArray bytes = file.readAll();
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    QStringList paragraphs;
+    if (suffix == QLatin1String("docx"))
+        paragraphs = core::office::paragraphsFromDocx(bytes);
+    else if (suffix == QLatin1String("pptx"))
+        paragraphs = core::office::slidesFromPptx(bytes);
+    else {
+        for (const QStringList &row : core::office::rowsFromXlsx(bytes))
+            paragraphs.append(row.join(QStringLiteral("  ")));
+    }
+    if (paragraphs.isEmpty()) {
+        reportError(tr("Nothing to import"), tr("No text was found in that file."));
+        return;
+    }
+
+    std::shared_ptr<core::PdfDocument> document;
+    try {
+        document = core::office::pdfFromParagraphs(paragraphs);
+    } catch (const std::exception &failure) {
+        reportError(tr("Could not import the file"), QString::fromUtf8(failure.what()));
+        return;
+    }
+    auto *imported = new core::DocumentSession(this);
+    imported->takeDocument(std::move(document), QString());
+    prepareNewSession(imported);
+    finishOpening(imported, QString(), false);
+    report(tr("Imported the text from %1. Pictures and styles were not kept.")
+               .arg(QFileInfo(path).fileName()));
+}
+
+void MainWindow::exportOffice(const QString &kind)
+{
+    auto *session = currentSession();
+    if (!session || !session->isLoaded())
+        return;
+
+    QString filter = tr("Word (*.docx)");
+    QString suffix = QStringLiteral("docx");
+    if (kind == QLatin1String("xlsx")) {
+        filter = tr("Excel (*.xlsx)");
+        suffix = QStringLiteral("xlsx");
+    } else if (kind == QLatin1String("pptx")) {
+        filter = tr("PowerPoint (*.pptx)");
+        suffix = QStringLiteral("pptx");
+    }
+    const QString path = QFileDialog::getSaveFileName(
+        this, tr("Export"), suggestedPath(QString(), suffix), filter);
+    if (path.isEmpty())
+        return;
+
+    const QString text = core::exporter::documentText(*session->document());
+    QByteArray package;
+    if (suffix == QLatin1String("docx"))
+        package = core::office::toDocx(text);
+    else if (suffix == QLatin1String("pptx"))
+        package = core::office::toPptx(text.split(QLatin1Char('\f')));
+    else {
+        QList<QStringList> rows;
+        for (const QString &line : text.split(QLatin1Char('\n')))
+            rows.append({ line });
+        package = core::office::toXlsx(rows);
+    }
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly) || file.write(package) != package.size() || !file.commit()) {
+        reportError(tr("Could not export"), file.errorString());
+        return;
+    }
+    report(tr("Exported the text to %1.").arg(QFileInfo(path).fileName()));
 }
 
 void MainWindow::manageLinks()
@@ -3217,6 +3825,8 @@ void MainWindow::addFormField()
     kind->addItem(tr("Text"), int(core::forms::NewFieldKind::Text));
     kind->addItem(tr("Checkbox"), int(core::forms::NewFieldKind::Checkbox));
     kind->addItem(tr("Dropdown"), int(core::forms::NewFieldKind::Combo));
+    kind->addItem(tr("Radio button"), int(core::forms::NewFieldKind::Radio));
+    kind->addItem(tr("Signature field"), int(core::forms::NewFieldKind::Signature));
     auto *name = new QLineEdit(&dialog);
     name->setPlaceholderText(tr("Field name"));
     auto *choices = new QLineEdit(&dialog);
@@ -3246,10 +3856,19 @@ void MainWindow::addFormField()
         }
     }
 
-    const qreal height = fieldKind == core::forms::NewFieldKind::Checkbox ? 16 : 22;
-    const QRectF rect(72, 72, fieldKind == core::forms::NewFieldKind::Checkbox ? 16 : 180, height);
+    const bool small = fieldKind == core::forms::NewFieldKind::Checkbox
+        || fieldKind == core::forms::NewFieldKind::Radio;
+    const qreal height = fieldKind == core::forms::NewFieldKind::Signature ? 48 : (small ? 16 : 22);
+    const QRectF rect(72, 72, small ? 16 : 180, height);
     if (!session->addFormField(session->currentPage(), fieldKind, name->text().trimmed(), rect, options))
         reportError(tr("Could not add the field"), tr("The document did not accept a new field."));
+    else if (fieldKind == core::forms::NewFieldKind::Radio)
+        report(tr("Added %1. Use the same name for the next radio button to keep them in one group.")
+                   .arg(name->text().trimmed()));
+    else if (fieldKind == core::forms::NewFieldKind::Signature)
+        report(tr("Added an unsigned signature field named %1. A certificate signature cannot be "
+                  "created in this build.")
+                   .arg(name->text().trimmed()));
     else
         report(tr("Added %1. It is listed in the Forms panel.").arg(name->text().trimmed()));
 }
@@ -3756,6 +4375,23 @@ void MainWindow::replaceSelectedTextWith(const QString &replacement, int pageInd
         return;
     }
 
+    const QString original = view->selectedText().simplified();
+    if (!original.isEmpty() && original != replacement) {
+        QString ignored;
+        const bool inPlace = session->applyStructuralEdit(
+            tr("Replace text"),
+            [&](core::PdfDocument &document) {
+                if (!document.replaceTextLiteral(pageIndex, original, replacement))
+                    throw core::MuError(QStringLiteral("literal-miss"));
+            },
+            &ignored);
+        if (inPlace) {
+            view->clearSelection();
+            report(tr("Replaced the original text, keeping its font."));
+            return;
+        }
+    }
+
     QRectF area = boxes.first();
     for (const QRectF &box : boxes)
         area = area.united(box);
@@ -3902,6 +4538,9 @@ void MainWindow::syncToolActions()
         break;
     case core::Tool::Arrow:
         id = "addArrow";
+        break;
+    case core::Tool::Callout:
+        id = "addCallout";
         break;
     case core::Tool::Stamp:
         id = "toolStamp";

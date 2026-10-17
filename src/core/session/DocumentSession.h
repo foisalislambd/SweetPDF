@@ -35,6 +35,7 @@ enum class Tool {
     Ellipse,
     Line,
     Arrow,
+    Callout,
     Stamp,
 };
 
@@ -192,6 +193,7 @@ public:
     bool selectLayerConfig(int index);
 
     bool addBookmark(const QString &title, int pageIndex);
+    bool addChildBookmark(const QList<int> &parentPath, const QString &title, int pageIndex);
     bool renameBookmark(const QList<int> &path, const QString &title);
     bool removeBookmark(const QList<int> &path);
 

@@ -165,6 +165,8 @@ public:
 
     /// Appends a bookmark for `pageIndex` at the top level. PDF only.
     bool addBookmark(const QString &title, int pageIndex);
+    /// Appends a child of the bookmark at `parentPath`.
+    bool addChildBookmark(const QList<int> &parentPath, const QString &title, int pageIndex);
     /// `path` is the sibling index at each depth, matching the outline tree.
     bool renameBookmark(const QList<int> &path, const QString &title);
     bool removeBookmark(const QList<int> &path);
@@ -208,6 +210,22 @@ public:
 
     /// Insets the page's crop box by the given margins, in points. PDF only.
     void cropPage(int index, qreal left, qreal top, qreal right, qreal bottom);
+
+    /// Sets the page's media box and drops any crop box. Size is in points.
+    void setPageSize(int index, const QSizeF &sizePoints);
+
+    /// Rotates the page content around its centre by `degrees` (counter-clockwise
+    /// in PDF space). Used to straighten a scan. The page box stays put.
+    void rotatePageContent(int index, qreal degrees);
+
+    /// Replaces one literal string in the page content when it occurs exactly
+    /// once, so the original font run stays. Returns false without changing the
+    /// page when the wording is not a single literal (kerned text, for example).
+    bool replaceTextLiteral(int index, const QString &from, const QString &to);
+
+    /// Drops document info, XMP metadata, JavaScript, open actions and embedded
+    /// files. Page content is left alone.
+    void stripHiddenData();
 
     /// Removes pages, given in any order. Structural: re-open afterwards.
     void deletePages(QList<int> indices);

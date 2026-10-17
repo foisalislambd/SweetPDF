@@ -30,6 +30,20 @@ HeaderFooterDialog::HeaderFooterDialog(int pageCount, int currentPage, QWidget *
     m_numbers->setChecked(true);
     form->addRow(QString(), m_numbers);
 
+    m_bates = new QCheckBox(tr("Bates number"), this);
+    form->addRow(QString(), m_bates);
+    m_batesPrefix = new QLineEdit(this);
+    m_batesPrefix->setPlaceholderText(tr("ACME"));
+    form->addRow(tr("Bates prefix"), m_batesPrefix);
+    m_batesStart = new QSpinBox(this);
+    m_batesStart->setRange(0, 9999999);
+    m_batesStart->setValue(1);
+    form->addRow(tr("Bates start"), m_batesStart);
+    m_batesDigits = new QSpinBox(this);
+    m_batesDigits->setRange(1, 10);
+    m_batesDigits->setValue(6);
+    form->addRow(tr("Bates digits"), m_batesDigits);
+
     m_fontSize = new QSpinBox(this);
     m_fontSize->setRange(8, 36);
     m_fontSize->setValue(10);
@@ -66,6 +80,26 @@ QString HeaderFooterDialog::footerText() const
 bool HeaderFooterDialog::pageNumbers() const
 {
     return m_numbers->isChecked();
+}
+
+bool HeaderFooterDialog::batesNumbers() const
+{
+    return m_bates->isChecked();
+}
+
+QString HeaderFooterDialog::batesPrefix() const
+{
+    return m_batesPrefix->text().trimmed();
+}
+
+int HeaderFooterDialog::batesStart() const
+{
+    return m_batesStart->value();
+}
+
+int HeaderFooterDialog::batesDigits() const
+{
+    return m_batesDigits->value();
 }
 
 int HeaderFooterDialog::fontSize() const

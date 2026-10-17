@@ -30,6 +30,7 @@ private:
                      const QList<int> &prefix);
     QList<int> pathOf(QTreeWidgetItem *item) const;
     void addBookmark();
+    void addChildBookmark();
     void renameBookmark();
     void removeBookmark();
 

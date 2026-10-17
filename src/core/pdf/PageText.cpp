@@ -1,6 +1,10 @@
 #include "core/pdf/PageText.h"
 
+#include <algorithm>
+#include <cmath>
 #include <limits>
+
+#include <QtMath>
 
 namespace sweet::core {
 namespace {
@@ -204,6 +208,91 @@ TextRange PageText::covering(const QList<QRectF> &areas) const
     if (from < 0)
         return {};
     return { from, to };
+}
+
+bool PageText::baselineDegrees(qreal *degrees) const
+{
+    if (!degrees)
+        return false;
+
+    QList<qreal> angles;
+    for (const TextRange &line : m_lines) {
+        if (line.to - line.from < 8)
+            continue;
+        const QRectF start = boxAt(line.from);
+        const QRectF end = boxAt(line.to - 1);
+        if (start.isNull() || end.isNull())
+            continue;
+        const qreal dx = end.center().x() - start.center().x();
+        const qreal dy = end.center().y() - start.center().y();
+        if (qAbs(dx) < 40.0)
+            continue;
+        angles.append(qRadiansToDegrees(std::atan2(dy, dx)));
+    }
+    if (angles.isEmpty())
+        return false;
+
+    std::sort(angles.begin(), angles.end());
+    *degrees = angles.at(angles.size() / 2);
+    return true;
+}
+
+QString PageText::toCsv(const TextRange &range) const
+{
+    if (range.isEmpty())
+        return {};
+
+    const auto quote = [](QString cell) {
+        cell.replace(QLatin1Char('"'), QStringLiteral("\"\""));
+        if (cell.contains(QLatin1Char(',')) || cell.contains(QLatin1Char('"'))
+            || cell.contains(QLatin1Char('\n')))
+            return QLatin1Char('"') + cell + QLatin1Char('"');
+        return cell;
+    };
+
+    QStringList rows;
+    for (const TextRange &line : m_lines) {
+        const int from = qMax(line.from, range.from);
+        const int to = qMin(line.to, range.to);
+        if (to <= from)
+            continue;
+
+        QStringList cells;
+        QString current;
+        qreal previousRight = -1;
+        qreal charWidth = 0;
+        int widths = 0;
+        for (int index = from; index < to; ++index) {
+            const QRectF box = boxAt(index);
+            if (!box.isNull() && box.width() > 0) {
+                charWidth += box.width();
+                ++widths;
+            }
+        }
+        const qreal gap = widths > 0 ? (charWidth / widths) * 1.6 : 8.0;
+
+        for (int index = from; index < to; ++index) {
+            const QRectF box = boxAt(index);
+            const bool split = !box.isNull() && previousRight >= 0 && box.left() - previousRight > gap;
+            if (split && !current.trimmed().isEmpty()) {
+                cells.append(current.trimmed());
+                current.clear();
+            }
+            current += m_text.at(index);
+            if (!box.isNull())
+                previousRight = box.right();
+        }
+        if (!current.trimmed().isEmpty())
+            cells.append(current.trimmed());
+        if (cells.isEmpty())
+            continue;
+
+        QStringList quoted;
+        for (const QString &cell : cells)
+            quoted.append(quote(cell));
+        rows.append(quoted.join(QLatin1Char(',')));
+    }
+    return rows.join(QLatin1Char('\n'));
 }
 
 } // namespace sweet::core

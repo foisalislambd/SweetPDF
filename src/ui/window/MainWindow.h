@@ -103,6 +103,17 @@ public Q_SLOTS:
     void replaceAllText();
     void addHeaderFooter();
     void cropCurrentPage();
+    void resizePages();
+    void deskewPages();
+    void insertScannedPages();
+    void alignAnnotations();
+    void copySelectionAsTable();
+    void runBatch();
+    void sanitizeDocument();
+    void prepareToShare();
+    void makeEditableCopy();
+    void importOffice();
+    void exportOffice(const QString &kind);
     void manageLinks();
     void addFormField();
     void compareDocument();

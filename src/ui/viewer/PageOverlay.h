@@ -20,6 +20,7 @@ struct PageOverlay
     QList<QRectF> matches;    ///< Search hits on this page.
     QRectF activeMatch;       ///< The hit the view is currently sitting on.
     QRectF selectedAnnotation; ///< Handles are drawn around this.
+    QList<QRectF> extraSelected; ///< Further annotations in the same selection.
 
     QList<QPolygonF> strokes; ///< Freehand stroke in progress.
     QRectF pendingShape;      ///< Rectangle, ellipse or redaction being dragged.
@@ -35,7 +36,8 @@ struct PageOverlay
     bool isEmpty() const
     {
         return selection.isEmpty() && matches.isEmpty() && activeMatch.isNull()
-            && selectedAnnotation.isNull() && strokes.isEmpty() && pendingShape.isNull()
+            && selectedAnnotation.isNull() && extraSelected.isEmpty() && strokes.isEmpty()
+            && pendingShape.isNull()
             && pendingShapeKind == PendingShape::None;
     }
 };

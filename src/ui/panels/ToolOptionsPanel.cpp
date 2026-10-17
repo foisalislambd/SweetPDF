@@ -59,6 +59,8 @@ const ToolInfo toolInfo[] = {
       true, true },
     { Tool::Arrow, "arrow", "Arrow", "Drag to draw a line with an arrowhead at the end.", true, true,
       true },
+    { Tool::Callout, "note", "Callout",
+      "Drag from the point you are calling out to where the text should sit.", true, false, true },
     { Tool::Stamp, "stamp", "Stamp", "Click the page to place a ready-made stamp.", false, false,
       false },
     { Tool::Redact, "redact", "Mark redaction",
@@ -74,7 +76,8 @@ const ToolInfo toolInfo[] = {
 
 bool isShapeFamily(Tool tool)
 {
-    return tool == Tool::Shape || tool == Tool::Ellipse || tool == Tool::Line || tool == Tool::Arrow;
+    return tool == Tool::Shape || tool == Tool::Ellipse || tool == Tool::Line || tool == Tool::Arrow
+        || tool == Tool::Callout;
 }
 
 const ToolInfo *infoFor(Tool tool)
@@ -221,7 +224,7 @@ void ToolOptionsPanel::rebuild()
         m_body->addWidget(buildBorderWidthRow(this));
     if (m_tool == Tool::Shape || m_tool == Tool::Ellipse)
         m_body->addWidget(buildFillRow(this));
-    if (m_tool == Tool::AddText)
+    if (m_tool == Tool::AddText || m_tool == Tool::Callout)
         m_body->addWidget(buildFontSizeRow(this));
     if (m_tool == Tool::Arrow)
         m_body->addWidget(buildArrowEndingRow(this));
@@ -454,6 +457,7 @@ QWidget *ToolOptionsPanel::buildShapePresets(QWidget *parent)
         { "addEllipse", "ellipse", "Ellipse", Tool::Ellipse },
         { "addLine", "line", "Line", Tool::Line },
         { "addArrow", "arrow", "Arrow", Tool::Arrow },
+        { "addCallout", "note", "Callout", Tool::Callout },
     };
 
     for (const auto &preset : presets) {

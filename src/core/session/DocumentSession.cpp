@@ -712,6 +712,16 @@ bool DocumentSession::addBookmark(const QString &title, int pageIndex)
     return true;
 }
 
+bool DocumentSession::addChildBookmark(const QList<int> &parentPath, const QString &title,
+                                       int pageIndex)
+{
+    if (!m_document || !m_document->addChildBookmark(parentPath, title, pageIndex))
+        return false;
+    setModified(true);
+    Q_EMIT outlineChanged();
+    return true;
+}
+
 bool DocumentSession::renameBookmark(const QList<int> &path, const QString &title)
 {
     if (!m_document || !m_document->renameBookmark(path, title))

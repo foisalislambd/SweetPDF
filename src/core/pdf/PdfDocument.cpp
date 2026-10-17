@@ -9,6 +9,7 @@
 #include <QFileInfo>
 
 #include <algorithm>
+#include <cmath>
 
 namespace sweet::core {
 namespace {
@@ -627,6 +628,236 @@ void PdfDocument::cropPage(int index, qreal left, qreal top, qreal right, qreal 
     updateCachedPageSize(index);
 }
 
+namespace {
+
+QByteArray escapePdfLiteral(const QByteArray &text)
+{
+    QByteArray escaped;
+    escaped.reserve(text.size());
+    for (unsigned char byte : text) {
+        if (byte == '(' || byte == ')' || byte == '\\') {
+            escaped.append('\\');
+            escaped.append(char(byte));
+        } else if (byte < 32 || byte > 126) {
+            escaped.append('\\');
+            escaped.append(QByteArray::number(int(byte), 8).rightJustified(3, '0'));
+        } else {
+            escaped.append(char(byte));
+        }
+    }
+    return escaped;
+}
+
+void appendStreamBytes(fz_context *ctx, pdf_obj *stream, fz_buffer *into)
+{
+    fz_buffer *raw = pdf_load_stream(ctx, stream);
+    unsigned char *data = nullptr;
+    const size_t length = fz_buffer_storage(ctx, raw, &data);
+    fz_append_data(ctx, into, data, length);
+    fz_append_byte(ctx, into, '\n');
+    fz_drop_buffer(ctx, raw);
+}
+
+} // namespace
+
+void PdfDocument::setPageSize(int index, const QSizeF &sizePoints)
+{
+    pdf_document *pdf = requirePdf();
+    if (index < 0 || index >= m_pageCount)
+        throw MuError(QStringLiteral("That page is not in the document"));
+    if (sizePoints.width() < 36.0 || sizePoints.height() < 36.0)
+        throw MuError(QStringLiteral("A page must be at least half an inch on each side"));
+
+    fz_context *ctx = MuContext::forThread();
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_try(ctx) {
+            pdf_obj *pageObject = pdf_lookup_page_obj(ctx, pdf, index);
+            fz_rect box = pdf_dict_get_rect(ctx, pageObject, PDF_NAME(MediaBox));
+            if (fz_is_empty_rect(box))
+                box = fz_make_rect(0, 0, float(sizePoints.width()), float(sizePoints.height()));
+            else {
+                box.x1 = box.x0 + float(sizePoints.width());
+                box.y1 = box.y0 + float(sizePoints.height());
+            }
+            pdf_dict_put_rect(ctx, pageObject, PDF_NAME(MediaBox), box);
+            pdf_dict_put_rect(ctx, pageObject, PDF_NAME(CropBox), box);
+        }
+        fz_catch(ctx)
+            MuContext::raise(ctx, QStringLiteral("Could not resize page %1").arg(index + 1));
+    }
+    markEdited();
+    discardPageCaches(index);
+    {
+        const std::lock_guard<std::mutex> guard(m_pageMutex);
+        if (index < m_pages.size()) {
+            if (auto cached = m_pages.at(index).lock())
+                cached->refreshBounds();
+        }
+    }
+    updateCachedPageSize(index);
+}
+
+void PdfDocument::rotatePageContent(int index, qreal degrees)
+{
+    pdf_document *pdf = requirePdf();
+    if (index < 0 || index >= m_pageCount)
+        throw MuError(QStringLiteral("That page is not in the document"));
+    if (qAbs(degrees) < 0.05)
+        return;
+
+    fz_context *ctx = MuContext::forThread();
+    const double radians = degrees * 3.14159265358979323846 / 180.0;
+    const double cosine = std::cos(radians);
+    const double sine = std::sin(radians);
+
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_buffer *wrapped = nullptr;
+        pdf_obj *stream = nullptr;
+        fz_var(wrapped);
+        fz_var(stream);
+        fz_try(ctx) {
+            pdf_obj *pageObject = pdf_lookup_page_obj(ctx, pdf, index);
+            fz_rect box = pdf_dict_get_rect(ctx, pageObject, PDF_NAME(CropBox));
+            if (fz_is_empty_rect(box))
+                box = pdf_dict_get_rect(ctx, pageObject, PDF_NAME(MediaBox));
+            const double cx = (box.x0 + box.x1) * 0.5;
+            const double cy = (box.y0 + box.y1) * 0.5;
+            const double a = cosine;
+            const double b = sine;
+            const double c = -sine;
+            const double d = cosine;
+            const double e = cx - a * cx - c * cy;
+            const double f = cy - b * cx - d * cy;
+
+            wrapped = fz_new_buffer(ctx, 1024);
+            fz_append_printf(ctx, wrapped, "q\n%.6f %.6f %.6f %.6f %.6f %.6f cm\n", a, b, c, d, e,
+                             f);
+            pdf_obj *contents = pdf_dict_get(ctx, pageObject, PDF_NAME(Contents));
+            if (pdf_is_array(ctx, contents)) {
+                const int count = pdf_array_len(ctx, contents);
+                for (int part = 0; part < count; ++part)
+                    appendStreamBytes(ctx, pdf_array_get(ctx, contents, part), wrapped);
+            } else if (contents) {
+                appendStreamBytes(ctx, contents, wrapped);
+            }
+            fz_append_string(ctx, wrapped, "Q\n");
+            stream = pdf_add_stream(ctx, pdf, wrapped, nullptr, 0);
+            pdf_dict_put(ctx, pageObject, PDF_NAME(Contents), stream);
+        }
+        fz_always(ctx) {
+            fz_drop_buffer(ctx, wrapped);
+            pdf_drop_obj(ctx, stream);
+        }
+        fz_catch(ctx)
+            MuContext::raise(ctx, QStringLiteral("Could not straighten page %1").arg(index + 1));
+    }
+    markEdited();
+    discardPageCaches(index);
+}
+
+bool PdfDocument::replaceTextLiteral(int index, const QString &from, const QString &to)
+{
+    pdf_document *pdf = requirePdf();
+    if (index < 0 || index >= m_pageCount || from.isEmpty() || from == to)
+        return false;
+
+    const QByteArray needle = '(' + escapePdfLiteral(from.toUtf8()) + ')';
+    const QByteArray replacement = '(' + escapePdfLiteral(to.toUtf8()) + ')';
+    fz_context *ctx = MuContext::forThread();
+    bool replaced = false;
+
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_try(ctx) {
+            pdf_obj *pageObject = pdf_lookup_page_obj(ctx, pdf, index);
+            pdf_obj *contents = pdf_dict_get(ctx, pageObject, PDF_NAME(Contents));
+            QList<pdf_obj *> streams;
+            if (pdf_is_array(ctx, contents)) {
+                const int count = pdf_array_len(ctx, contents);
+                for (int part = 0; part < count; ++part)
+                    streams.append(pdf_array_get(ctx, contents, part));
+            } else if (contents) {
+                streams.append(contents);
+            }
+
+            pdf_obj *hit = nullptr;
+            int hits = 0;
+            for (pdf_obj *stream : streams) {
+                fz_buffer *raw = pdf_load_stream(ctx, stream);
+                unsigned char *data = nullptr;
+                const size_t length = fz_buffer_storage(ctx, raw, &data);
+                const QByteArray bytes(reinterpret_cast<const char *>(data), int(length));
+                hits += bytes.count(needle);
+                if (bytes.contains(needle))
+                    hit = stream;
+                fz_drop_buffer(ctx, raw);
+            }
+            if (hits == 1 && hit) {
+                fz_buffer *raw = pdf_load_stream(ctx, hit);
+                unsigned char *data = nullptr;
+                const size_t length = fz_buffer_storage(ctx, raw, &data);
+                QByteArray bytes(reinterpret_cast<const char *>(data), int(length));
+                fz_drop_buffer(ctx, raw);
+                bytes.replace(needle, replacement);
+
+                fz_buffer *updated = fz_new_buffer_from_copied_data(
+                    ctx, reinterpret_cast<const unsigned char *>(bytes.constData()),
+                    size_t(bytes.size()));
+                pdf_update_stream(ctx, pdf, hit, updated, 0);
+                fz_drop_buffer(ctx, updated);
+                replaced = true;
+            }
+        }
+        fz_catch(ctx)
+            replaced = false;
+    }
+
+    if (!replaced)
+        return false;
+    markEdited();
+    discardPageCaches(index);
+    return true;
+}
+
+void PdfDocument::stripHiddenData()
+{
+    pdf_document *pdf = requirePdf();
+    fz_context *ctx = MuContext::forThread();
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_try(ctx) {
+            pdf_obj *trailer = pdf_trailer(ctx, pdf);
+            pdf_obj *info = pdf_dict_get(ctx, trailer, PDF_NAME(Info));
+            if (info) {
+                pdf_obj *keys[] = { PDF_NAME(Title), PDF_NAME(Author), PDF_NAME(Subject),
+                                    PDF_NAME(Keywords), PDF_NAME(Creator), PDF_NAME(Producer) };
+                for (pdf_obj *key : keys)
+                    pdf_dict_del(ctx, info, key);
+            }
+            pdf_obj *root = pdf_dict_get(ctx, trailer, PDF_NAME(Root));
+            pdf_dict_del(ctx, root, PDF_NAME(Metadata));
+            pdf_dict_del(ctx, root, PDF_NAME(OpenAction));
+            pdf_dict_del(ctx, root, PDF_NAME(AA));
+            pdf_obj *names = pdf_dict_get(ctx, root, PDF_NAME(Names));
+            if (names) {
+                pdf_dict_del(ctx, names, PDF_NAME(JavaScript));
+                pdf_dict_del(ctx, names, PDF_NAME(EmbeddedFiles));
+            }
+            const int count = pdf_count_pages(ctx, pdf);
+            for (int index = 0; index < count; ++index) {
+                pdf_obj *pageObject = pdf_lookup_page_obj(ctx, pdf, index);
+                pdf_dict_del(ctx, pageObject, PDF_NAME(AA));
+            }
+        }
+        fz_catch(ctx)
+            MuContext::raise(ctx, QStringLiteral("Could not strip hidden data"));
+    }
+    markEdited();
+    readInfo();
+}
+
 void PdfDocument::deletePages(QList<int> indices)
 {
     pdf_document *pdf = requirePdf();
@@ -1023,6 +1254,59 @@ bool PdfDocument::addBookmark(const QString &title, int pageIndex)
         }
         fz_catch(ctx) {
             qCWarning(lcPdf) << "Could not add a bookmark:" << MuContext::lastError(ctx);
+            return false;
+        }
+    }
+
+    if (!added)
+        return false;
+    markEdited();
+    readOutline();
+    return true;
+}
+
+bool PdfDocument::addChildBookmark(const QList<int> &parentPath, const QString &title, int pageIndex)
+{
+    if (!m_pdf || parentPath.isEmpty() || title.isEmpty() || pageIndex < 0 || pageIndex >= m_pageCount)
+        return false;
+
+    ensureStructure();
+    fz_context *ctx = MuContext::forThread();
+    const QByteArray titleUtf8 = title.toUtf8();
+    bool added = false;
+
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_outline_iterator *iter = nullptr;
+        char *uri = nullptr;
+        fz_var(iter);
+        fz_var(uri);
+        fz_var(added);
+        fz_try(ctx) {
+            const fz_link_dest dest = fz_make_link_dest_xyz(0, pageIndex, 0, 0, 0);
+            uri = fz_format_link_uri(ctx, m_document, dest);
+            iter = fz_new_outline_iterator(ctx, m_document);
+            if (!seekOutline(ctx, iter, parentPath))
+                fz_throw(ctx, FZ_ERROR_ARGUMENT, "bookmark not found");
+            // Down onto the child list. Failure means there is no child yet;
+            // insert then creates the first one.
+            fz_outline_iterator_down(ctx, iter);
+            if (fz_outline_iterator_item(ctx, iter)) {
+                while (fz_outline_iterator_next(ctx, iter) == 0) {
+                }
+            }
+            fz_outline_item item{};
+            item.title = const_cast<char *>(titleUtf8.constData());
+            item.uri = uri;
+            fz_outline_iterator_insert(ctx, iter, &item);
+            added = true;
+        }
+        fz_always(ctx) {
+            fz_drop_outline_iterator(ctx, iter);
+            fz_free(ctx, uri);
+        }
+        fz_catch(ctx) {
+            qCWarning(lcPdf) << "Could not add a nested bookmark:" << MuContext::lastError(ctx);
             return false;
         }
     }

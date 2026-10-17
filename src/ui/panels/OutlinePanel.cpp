@@ -84,10 +84,13 @@ OutlinePanel::OutlinePanel(QWidget *parent)
         // Right-click does not change the current row. Use the row under the pointer.
         m_tree->setCurrentItem(item);
         QMenu menu(this);
+        QAction *child = menu.addAction(tr("Add sub-bookmark"));
         QAction *rename = menu.addAction(tr("Rename"));
         QAction *remove = menu.addAction(tr("Delete"));
         QAction *chosen = menu.exec(m_tree->viewport()->mapToGlobal(at));
-        if (chosen == rename)
+        if (chosen == child)
+            addChildBookmark();
+        else if (chosen == rename)
             renameBookmark();
         else if (chosen == remove)
             removeBookmark();
@@ -143,6 +146,23 @@ void OutlinePanel::addBookmark()
         return;
     if (!m_session->addBookmark(title.trimmed(), page))
         return;
+}
+
+void OutlinePanel::addChildBookmark()
+{
+    if (!m_session || !m_session->isLoaded() || !m_session->document()->isPdf())
+        return;
+    QTreeWidgetItem *item = m_tree->currentItem();
+    if (!item)
+        return;
+    const int page = m_session->currentPage();
+    bool accepted = false;
+    const QString title = QInputDialog::getText(
+        this, tr("Add sub-bookmark"), tr("Name for page %1:").arg(page + 1), QLineEdit::Normal,
+        tr("Page %1").arg(page + 1), &accepted);
+    if (!accepted || title.trimmed().isEmpty())
+        return;
+    m_session->addChildBookmark(pathOf(item), title.trimmed(), page);
 }
 
 void OutlinePanel::renameBookmark()

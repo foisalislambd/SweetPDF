@@ -5,6 +5,8 @@
 #include "ui/viewer/PageItem.h"
 
 #include <QApplication>
+
+#include <algorithm>
 #include <QClipboard>
 #include <QContextMenuEvent>
 #include <QDesktopServices>
@@ -55,7 +57,7 @@ bool isRectShapeTool(core::Tool tool)
 
 bool isLineTool(core::Tool tool)
 {
-    return tool == core::Tool::Line || tool == core::Tool::Arrow;
+    return tool == core::Tool::Line || tool == core::Tool::Arrow || tool == core::Tool::Callout;
 }
 
 } // namespace
@@ -291,6 +293,7 @@ void PageView::applyTool()
     case core::Tool::Ellipse:
     case core::Tool::Line:
     case core::Tool::Arrow:
+    case core::Tool::Callout:
     case core::Tool::Redact:
         viewport()->setCursor(Qt::CrossCursor);
         break;
@@ -540,6 +543,7 @@ void PageView::refreshOverlay(int pageIndex)
                 break;
             case core::Tool::Line:
             case core::Tool::Arrow:
+            case core::Tool::Callout:
                 overlay.pendingShapeKind = PageOverlay::PendingShape::Line;
                 overlay.pendingLineStart = m_shapeOrigin;
                 overlay.pendingLineEnd = m_lineEnd;
@@ -557,6 +561,10 @@ void PageView::refreshOverlay(int pageIndex)
 
     if (pageIndex == m_selectedAnnotationPage && m_selectedAnnotation != 0)
         overlay.selectedAnnotation = m_selectedAnnotationRect;
+    for (const core::Annotation &annotation : m_group) {
+        if (annotation.pageIndex == pageIndex && annotation.objectNumber != m_selectedAnnotation)
+            overlay.extraSelected.append(annotation.rect);
+    }
 
     item->setOverlay(overlay);
 }
@@ -737,6 +745,17 @@ void PageView::revealAnnotation(int pageIndex, int objectNumber)
         if (annotation.objectNumber != objectNumber)
             continue;
 
+        bool inGroup = false;
+        for (core::Annotation &grouped : m_group) {
+            if (grouped.pageIndex == pageIndex && grouped.objectNumber == objectNumber) {
+                grouped = annotation;
+                inGroup = true;
+                break;
+            }
+        }
+        if (!inGroup)
+            m_group = { annotation };
+
         const int previous = m_selectedAnnotationPage;
         m_selectedAnnotationPage = pageIndex;
         m_selectedAnnotation = objectNumber;
@@ -749,6 +768,20 @@ void PageView::revealAnnotation(int pageIndex, int objectNumber)
         scrollRectIntoView(pageIndex, annotation.rect);
         return;
     }
+}
+
+QList<core::Annotation> PageView::groupedAnnotations() const
+{
+    return m_group;
+}
+
+QString PageView::selectedTableCsv() const
+{
+    if (!hasSelection())
+        return {};
+    if (auto text = textOf(m_selectionPage))
+        return text->toCsv(m_selection);
+    return {};
 }
 
 bool PageView::deleteSelectedAnnotation()
@@ -766,6 +799,16 @@ bool PageView::deleteSelectedAnnotation()
         m_selectedAnnotationPage = -1;
         m_selectedAnnotationRect = QRectF();
         m_session->setSelectedAnnotation(-1, 0);
+        const QList<core::Annotation> group = m_group;
+        m_group.clear();
+        if (group.size() > 1) {
+            m_session->undoStack()->beginMacro(tr("Delete annotations"));
+            for (const core::Annotation &extra : group)
+                m_session->removeAnnotation(extra);
+            m_session->undoStack()->endMacro();
+            refreshOverlay(-1);
+            return true;
+        }
         const bool removed = m_session->removeAnnotation(annotation);
         refreshOverlay(page);
         return removed;
@@ -877,6 +920,58 @@ void PageView::commitPendingAnnotation()
         spec.borderWidth = 2.0;
         spec.author = m_session->author();
         m_session->addAnnotation(spec);
+    } else if (tool == core::Tool::Callout) {
+        const QPointF delta = m_lineEnd - m_shapeOrigin;
+        if (QPointF::dotProduct(delta, delta) > 16.0) {
+            bool accepted = false;
+            const QString text = QInputDialog::getMultiLineText(this, tr("Callout"), tr("Text:"),
+                                                                QString(), &accepted);
+            if (accepted && !text.isEmpty()) {
+                const qreal fontSize = m_session->markupFontSize();
+                const int longest = std::max(8, int(text.split(QLatin1Char('\n')).first().size()));
+                const qreal width = qBound(80.0, longest * fontSize * 0.55, 280.0);
+                const qreal height = qMax(fontSize + 10.0,
+                                          text.count(QLatin1Char('\n')) * (fontSize + 4.0) + fontSize + 8.0);
+                QRectF box(m_lineEnd.x(), m_lineEnd.y() - height / 2.0, width, height);
+                QPointF edge = box.center();
+                if (m_shapeOrigin.x() <= box.left())
+                    edge.setX(box.left());
+                else if (m_shapeOrigin.x() >= box.right())
+                    edge.setX(box.right());
+                if (m_shapeOrigin.y() <= box.top())
+                    edge.setY(box.top());
+                else if (m_shapeOrigin.y() >= box.bottom())
+                    edge.setY(box.bottom());
+
+                m_session->undoStack()->beginMacro(tr("Add callout"));
+                core::AnnotationSpec line;
+                line.type = core::AnnotationType::Line;
+                line.pageIndex = m_drawPage;
+                line.lineStart = m_shapeOrigin;
+                line.lineEnd = edge;
+                line.hasLineEndpoints = true;
+                line.lineEndStyle = core::LineEnding::None;
+                line.lineStartStyle = core::LineEnding::OpenArrow;
+                line.color = m_session->markupColor();
+                line.opacity = 1;
+                line.borderWidth = m_session->markupBorderWidth();
+                line.author = m_session->author();
+                m_session->addAnnotation(line, tr("Add callout"));
+
+                core::AnnotationSpec label;
+                label.type = core::AnnotationType::FreeText;
+                label.pageIndex = m_drawPage;
+                label.rect = box;
+                label.contents = text;
+                label.fontSize = fontSize;
+                label.color = m_session->markupColor();
+                label.borderWidth = 0;
+                label.opacity = 1;
+                label.author = m_session->author();
+                m_session->addAnnotation(label, tr("Add callout"));
+                m_session->undoStack()->endMacro();
+            }
+        }
     } else if (isLineTool(tool)) {
         const QPointF delta = m_lineEnd - m_shapeOrigin;
         if (QPointF::dotProduct(delta, delta) > 4.0) {
@@ -1227,15 +1322,42 @@ void PageView::mousePressEvent(QMouseEvent *event)
                 const core::Annotation hit = annotationAt(pageIndex, pagePoint);
                 if (hit.objectNumber != 0) {
                     clearSelection();
-                    revealAnnotation(pageIndex, hit.objectNumber);
-                    Q_EMIT annotationSelected(pageIndex, hit.objectNumber);
+                    const bool extend = event->modifiers() & Qt::ShiftModifier;
+                    if (!extend)
+                        m_group.clear();
+                    bool removed = false;
+                    if (extend) {
+                        for (int index = 0; index < m_group.size(); ++index) {
+                            if (m_group.at(index).objectNumber == hit.objectNumber
+                                && m_group.at(index).pageIndex == pageIndex) {
+                                m_group.removeAt(index);
+                                removed = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!removed)
+                        m_group.append(hit);
+                    if (m_group.isEmpty()) {
+                        m_selectedAnnotation = 0;
+                        m_selectedAnnotationPage = -1;
+                        m_selectedAnnotationRect = QRectF();
+                        m_session->setSelectedAnnotation(-1, 0);
+                        refreshOverlay(pageIndex);
+                    } else {
+                        const core::Annotation &primary = m_group.last();
+                        revealAnnotation(primary.pageIndex, primary.objectNumber);
+                        Q_EMIT annotationSelected(primary.pageIndex, primary.objectNumber);
+                    }
                     event->accept();
                     return;
                 }
-                if (m_selectedAnnotation != 0) {
+                if (m_selectedAnnotation != 0 || !m_group.isEmpty()) {
                     const int previous = m_selectedAnnotationPage;
                     m_selectedAnnotation = 0;
                     m_selectedAnnotationPage = -1;
+                    m_selectedAnnotationRect = QRectF();
+                    m_group.clear();
                     m_session->setSelectedAnnotation(-1, 0);
                     refreshOverlay(previous);
                 }
@@ -1292,6 +1414,7 @@ void PageView::mousePressEvent(QMouseEvent *event)
                 return;
             case core::Tool::Line:
             case core::Tool::Arrow:
+            case core::Tool::Callout:
                 m_drawPage = pageIndex;
                 m_drawing = true;
                 m_shapeOrigin = pagePoint;

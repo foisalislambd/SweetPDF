@@ -66,6 +66,12 @@ public:
     /// Deletes whatever annotation is selected. Returns false when none is.
     bool deleteSelectedAnnotation();
 
+    /// The annotation selection, including extras added with Shift-click.
+    QList<sweet::core::Annotation> groupedAnnotations() const;
+
+    /// The text selection as CSV when it has more than one column. Empty otherwise.
+    QString selectedTableCsv() const;
+
     /// Opens the note editor for the selected annotation.
     void editSelectedAnnotation();
 
@@ -218,6 +224,7 @@ private:
     int m_selectedAnnotationPage = -1;
     int m_selectedAnnotation = 0;
     QRectF m_selectedAnnotationRect;
+    QList<sweet::core::Annotation> m_group;
 };
 
 } // namespace sweet::ui

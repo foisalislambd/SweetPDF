@@ -66,7 +66,7 @@ QList<FormField> onPage(const PdfDocument &document, int pageIndex);
 /// True when the document has at least one widget, i.e. it is a form.
 bool hasFields(const PdfDocument &document);
 
-enum class NewFieldKind { Text, Checkbox, Combo };
+enum class NewFieldKind { Text, Checkbox, Combo, Radio, Signature };
 
 /// Adds a widget to the page and to the document's AcroForm. `choices` is the
 /// option list for a combo box. The rectangle is in unrotated page points.

@@ -375,11 +375,45 @@ bool createField(PdfDocument &document, int pageIndex, NewFieldKind kind, const 
             pdf_dict_put_int(ctx, obj, PDF_NAME(F), PDF_ANNOT_IS_PRINT);
             pdf_dict_put_text_string(ctx, obj, PDF_NAME(T), fieldName.constData());
             pdf_dict_put_text_string(ctx, obj, PDF_NAME(DA), "/Helv 12 Tf 0 g");
+            char radioOn[16] = { 0 };
 
             if (kind == NewFieldKind::Checkbox) {
                 pdf_dict_put(ctx, obj, PDF_NAME(FT), PDF_NAME(Btn));
                 pdf_dict_put_name(ctx, obj, PDF_NAME(V), "Off");
                 pdf_dict_put_name(ctx, obj, PDF_NAME(AS), "Off");
+            } else if (kind == NewFieldKind::Radio) {
+                pdf_obj *parent = nullptr;
+                pdf_obj *ownedParent = nullptr;
+                const int fieldCount = pdf_array_len(ctx, fields);
+                for (int fieldIndex = 0; fieldIndex < fieldCount; ++fieldIndex) {
+                    pdf_obj *field = pdf_array_get(ctx, fields, fieldIndex);
+                    const char *existing =
+                        pdf_to_text_string(ctx, pdf_dict_get(ctx, field, PDF_NAME(T)));
+                    pdf_obj *fieldType = pdf_dict_get(ctx, field, PDF_NAME(FT));
+                    const int flags = pdf_dict_get_int(ctx, field, PDF_NAME(Ff));
+                    if (existing && fieldName == existing && pdf_name_eq(ctx, fieldType, PDF_NAME(Btn))
+                        && (flags & PDF_BTN_FIELD_IS_RADIO) != 0)
+                        parent = field;
+                }
+                if (!parent) {
+                    ownedParent = pdf_add_new_dict(ctx, pdf, 4);
+                    parent = ownedParent;
+                    pdf_dict_put(ctx, parent, PDF_NAME(FT), PDF_NAME(Btn));
+                    pdf_dict_put_int(ctx, parent, PDF_NAME(Ff), PDF_BTN_FIELD_IS_RADIO);
+                    pdf_dict_put_text_string(ctx, parent, PDF_NAME(T), fieldName.constData());
+                    pdf_dict_put_name(ctx, parent, PDF_NAME(V), "Off");
+                    pdf_dict_put_drop(ctx, parent, PDF_NAME(Kids), pdf_new_array(ctx, pdf, 2));
+                    pdf_array_push(ctx, fields, parent);
+                    pdf_drop_obj(ctx, ownedParent);
+                }
+                pdf_dict_del(ctx, obj, PDF_NAME(T));
+                pdf_dict_put(ctx, obj, PDF_NAME(Parent), parent);
+                pdf_dict_put_name(ctx, obj, PDF_NAME(AS), "Off");
+                pdf_obj *kids = pdf_dict_get(ctx, parent, PDF_NAME(Kids));
+                fz_snprintf(radioOn, sizeof(radioOn), "Ch%d", pdf_array_len(ctx, kids));
+                pdf_array_push(ctx, kids, obj);
+            } else if (kind == NewFieldKind::Signature) {
+                pdf_dict_put(ctx, obj, PDF_NAME(FT), PDF_NAME(Sig));
             } else if (kind == NewFieldKind::Combo) {
                 pdf_dict_put(ctx, obj, PDF_NAME(FT), PDF_NAME(Ch));
                 pdf_dict_put_int(ctx, obj, PDF_NAME(Ff), PDF_CH_FIELD_IS_COMBO);
@@ -394,8 +428,21 @@ bool createField(PdfDocument &document, int pageIndex, NewFieldKind kind, const 
                 pdf_dict_put_text_string(ctx, obj, PDF_NAME(V), "");
             }
 
-            pdf_array_push(ctx, fields, obj);
+            if (kind != NewFieldKind::Radio)
+                pdf_array_push(ctx, fields, obj);
             pdf_update_annot(ctx, annot);
+            if (radioOn[0] != '\0') {
+                // The generated appearance is named Yes. Each radio in a group needs
+                // its own on-state, otherwise selecting one selects all of them.
+                pdf_obj *normal = pdf_dict_get(ctx, pdf_dict_get(ctx, obj, PDF_NAME(AP)), PDF_NAME(N));
+                pdf_obj *yes = pdf_dict_get(ctx, normal, PDF_NAME(Yes));
+                if (yes) {
+                    pdf_obj *key = pdf_new_name(ctx, radioOn);
+                    pdf_dict_put(ctx, normal, key, yes);
+                    pdf_drop_obj(ctx, key);
+                    pdf_dict_del(ctx, normal, PDF_NAME(Yes));
+                }
+            }
             pdf_end_operation(ctx, pdf);
             created = true;
         }

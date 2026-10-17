@@ -20,6 +20,10 @@ public:
     QString headerText() const;
     QString footerText() const;
     bool pageNumbers() const;
+    bool batesNumbers() const;
+    QString batesPrefix() const;
+    int batesStart() const;
+    int batesDigits() const;
     int fontSize() const;
     /// True when every page is included. False means the current page only.
     bool allPages() const;
@@ -28,6 +32,10 @@ private:
     QLineEdit *m_header = nullptr;
     QLineEdit *m_footer = nullptr;
     QCheckBox *m_numbers = nullptr;
+    QCheckBox *m_bates = nullptr;
+    QLineEdit *m_batesPrefix = nullptr;
+    QSpinBox *m_batesStart = nullptr;
+    QSpinBox *m_batesDigits = nullptr;
     QSpinBox *m_fontSize = nullptr;
     QComboBox *m_scope = nullptr;
 };

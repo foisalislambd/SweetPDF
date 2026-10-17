@@ -63,6 +63,13 @@ public:
     /// search hit that came back as quads rather than as indices.
     TextRange covering(const QList<QRectF> &areas) const;
 
+    /// Median baseline angle in degrees, PDF space. False when there is not
+    /// enough text to judge a skew.
+    bool baselineDegrees(qreal *degrees) const;
+
+    /// Selection laid out as a table: rows are text lines, columns are gaps.
+    QString toCsv(const TextRange &range) const;
+
 private:
     QString m_text;
     QList<QRectF> m_boxes; ///< One per character; null for line breaks.

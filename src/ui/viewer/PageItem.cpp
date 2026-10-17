@@ -220,21 +220,25 @@ void PageItem::paintOverlay(QPainter *painter, const Palette &colors)
 
     // The annotation the user has picked: a dashed frame with corner handles, so
     // it is clearly a selection and not part of the page.
-    if (!m_overlay.selectedAnnotation.isNull()) {
-        const QRectF frame = m_overlay.selectedAnnotation.adjusted(-2, -2, 2, 2);
+    if (!m_overlay.selectedAnnotation.isNull() || !m_overlay.extraSelected.isEmpty()) {
         painter->setBrush(Qt::NoBrush);
         QPen dashed(colors.accent, 1.0, Qt::DashLine);
         dashed.setDashPattern({ 4, 3 });
         painter->setPen(dashed);
-        painter->drawRect(frame);
+        for (const QRectF &extra : m_overlay.extraSelected)
+            painter->drawRect(extra.adjusted(-2, -2, 2, 2));
+        if (!m_overlay.selectedAnnotation.isNull()) {
+            const QRectF frame = m_overlay.selectedAnnotation.adjusted(-2, -2, 2, 2);
+            painter->drawRect(frame);
 
-        painter->setPen(QPen(colors.accent, 0.8));
-        painter->setBrush(colors.surface);
-        constexpr qreal handle = 3.0;
-        for (const QPointF &corner : { frame.topLeft(), frame.topRight(), frame.bottomLeft(),
-                                       frame.bottomRight() }) {
-            painter->drawRect(QRectF(corner.x() - handle, corner.y() - handle, handle * 2,
-                                     handle * 2));
+            painter->setPen(QPen(colors.accent, 0.8));
+            painter->setBrush(colors.surface);
+            constexpr qreal handle = 3.0;
+            for (const QPointF &corner : { frame.topLeft(), frame.topRight(), frame.bottomLeft(),
+                                           frame.bottomRight() }) {
+                painter->drawRect(QRectF(corner.x() - handle, corner.y() - handle, handle * 2,
+                                         handle * 2));
+            }
         }
     }
 
