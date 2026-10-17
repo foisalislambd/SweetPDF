@@ -213,9 +213,14 @@ QIcon Theme::icon(const QString &name) const
 
 QIcon Theme::icon(const QString &name, const QColor &color) const
 {
+    // Every mode is painted in the requested colour. Leaving one out makes Qt
+    // synthesise a washed-out stand-in, which is how an icon disappears on a
+    // focused or hovered button.
     QIcon result;
     addVariant(result, name, color, QIcon::Normal);
     addVariant(result, name, color, QIcon::Disabled);
+    addVariant(result, name, color, QIcon::Active);
+    addVariant(result, name, color, QIcon::Selected);
     return result;
 }
 

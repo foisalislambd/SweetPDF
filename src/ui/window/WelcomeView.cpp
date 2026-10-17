@@ -19,6 +19,7 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
+#include <QSize>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -291,7 +292,8 @@ void WelcomeView::buildHeader(QVBoxLayout *column)
     auto *controls = new QVBoxLayout;
     controls->setSpacing(8);
 
-    auto *open = new QPushButton(icon(QStringLiteral("open")), tr("Open PDF"), header);
+    auto *open = new QPushButton(tr("Open PDF"), header);
+    open->setObjectName(QStringLiteral("WelcomeOpen"));
     open->setProperty("accent", true);
     open->setMinimumWidth(168);
     open->setToolTip(tr("Open a document (Ctrl+O)"));
@@ -301,18 +303,21 @@ void WelcomeView::buildHeader(QVBoxLayout *column)
     auto *minor = new QHBoxLayout;
     minor->setSpacing(6);
 
-    auto *theme = new QPushButton(icon(QStringLiteral("moon")), tr("Theme"), header);
+    auto *theme = new QPushButton(tr("Theme"), header);
+    theme->setObjectName(QStringLiteral("WelcomeTheme"));
     theme->setProperty("flat", true);
     theme->setToolTip(tr("Switch between the light and dark theme"));
     connect(theme, &QPushButton::clicked, this,
             [this] { Q_EMIT toolRequested(QStringLiteral("toggleTheme")); });
     minor->addWidget(theme);
 
-    auto *settings = new QPushButton(icon(QStringLiteral("settings")), tr("Settings"), header);
+    auto *settings = new QPushButton(tr("Settings"), header);
+    settings->setObjectName(QStringLiteral("WelcomeSettings"));
     settings->setProperty("flat", true);
     connect(settings, &QPushButton::clicked, this,
             [this] { Q_EMIT toolRequested(QStringLiteral("settings")); });
     minor->addWidget(settings);
+    tintHeaderButtons();
     controls->addLayout(minor);
 
     row->addLayout(controls, 0);
@@ -521,8 +526,32 @@ void WelcomeView::rebuildRecentRows()
         m_recentSummary->setText(tr("%1 documents").arg(existing));
 }
 
+void WelcomeView::tintHeaderButtons()
+{
+    const Palette &colors = themePalette();
+    const bool dark = Theme::instance().mode() == ThemeMode::Dark;
+
+    const auto paint = [](QPushButton *button, const QString &name, const QColor &color) {
+        if (!button)
+            return;
+        button->setIcon(Theme::instance().icon(name, color));
+        button->setIconSize(QSize(18, 18));
+    };
+
+    // White on the blue button in both themes. The flat buttons follow the
+    // theme text colour, and the theme glyph shows the mode you would switch to.
+    paint(findChild<QPushButton *>(QStringLiteral("WelcomeOpen")), QStringLiteral("open"),
+          colors.textInverted);
+    paint(findChild<QPushButton *>(QStringLiteral("WelcomeTheme")),
+          dark ? QStringLiteral("sun") : QStringLiteral("moon"), colors.text);
+    paint(findChild<QPushButton *>(QStringLiteral("WelcomeSettings")),
+          QStringLiteral("settings"), colors.text);
+}
+
 void WelcomeView::retint()
 {
+    tintHeaderButtons();
+
     for (QLabel *label : findChildren<QLabel *>()) {
         const QVariant ink = label->property(inkProperty);
         if (!ink.isValid())

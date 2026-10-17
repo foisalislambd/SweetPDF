@@ -62,6 +62,7 @@ private:
     /// Re-applies palette colours after a theme change. Labels are coloured
     /// individually, which the global stylesheet cannot reach.
     void retint();
+    void tintHeaderButtons();
 
     QWidget *m_column = nullptr;
     QGridLayout *m_tileGrid = nullptr;
