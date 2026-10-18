@@ -263,7 +263,7 @@ QString columnName(int index)
     int value = index + 1;
     while (value > 0) {
         const int digit = (value - 1) % 26;
-        name.prepend(QChar(QLatin1Char('A') + digit));
+        name.prepend(QLatin1Char(static_cast<char>('A' + digit)));
         value = (value - 1) / 26;
     }
     return name;
