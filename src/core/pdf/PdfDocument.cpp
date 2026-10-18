@@ -770,6 +770,8 @@ bool PdfDocument::replaceTextLiteral(int index, const QString &from, const QStri
 
     {
         const std::lock_guard<std::mutex> guard(m_parseMutex);
+        // MuPDF's try block is setjmp. Mark this so a longjmp cannot clobber it.
+        fz_var(replaced);
         fz_try(ctx) {
             pdf_obj *pageObject = pdf_lookup_page_obj(ctx, pdf, index);
             pdf_obj *contents = pdf_dict_get(ctx, pageObject, PDF_NAME(Contents));

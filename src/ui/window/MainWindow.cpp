@@ -77,6 +77,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace sweet::ui {
 namespace {
@@ -3188,11 +3189,11 @@ void MainWindow::cropCurrentPage()
     QDialog dialog(this);
     dialog.setWindowTitle(tr("Crop page"));
     auto *form = new QFormLayout;
-    const auto margin = [&dialog](const QString &label, QFormLayout *form) {
+    const auto margin = [&dialog](const QString &label, QFormLayout *layout) {
         auto *box = new QSpinBox(&dialog);
         box->setRange(0, 400);
         box->setSuffix(QObject::tr(" pt"));
-        form->addRow(label, box);
+        layout->addRow(label, box);
         return box;
     };
     auto *left = margin(tr("Left"), form);
@@ -4382,7 +4383,7 @@ void MainWindow::replaceSelectedTextWith(const QString &replacement, int pageInd
             tr("Replace text"),
             [&](core::PdfDocument &document) {
                 if (!document.replaceTextLiteral(pageIndex, original, replacement))
-                    throw core::MuError(QStringLiteral("literal-miss"));
+                    throw std::runtime_error("literal-miss");
             },
             &ignored);
         if (inPlace) {
