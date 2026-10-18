@@ -838,7 +838,9 @@ void PdfDocument::stripHiddenData()
             }
             pdf_obj *root = pdf_dict_get(ctx, trailer, PDF_NAME(Root));
             pdf_dict_del(ctx, root, PDF_NAME(Metadata));
-            pdf_dict_del(ctx, root, PDF_NAME(OpenAction));
+            // OpenAction is a real catalog key, but MuPDF 1.27 (the version
+            // Ubuntu 26.04 ships) does not intern it, so PDF_NAME() will not compile.
+            pdf_dict_dels(ctx, root, "OpenAction");
             pdf_dict_del(ctx, root, PDF_NAME(AA));
             pdf_obj *names = pdf_dict_get(ctx, root, PDF_NAME(Names));
             if (names) {
