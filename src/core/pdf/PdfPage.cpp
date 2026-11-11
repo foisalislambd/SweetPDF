@@ -4,6 +4,7 @@
 #include "core/pdf/MuContext.h"
 #include "core/util/Logging.h"
 
+#include <QRegularExpression>
 #include <QTransform>
 
 #include <cmath>
@@ -384,6 +385,21 @@ PdfPage::FindResult PdfPage::findText(const QString &needle, const FindOptions &
         const auto sensitivity =
             options.matchCase ? Qt::CaseSensitive : Qt::CaseInsensitive;
         result.ranges = layer->findAll(needle, sensitivity, options.wholeWords);
+        return result;
+    }
+
+    // MuPDF reports a bad pattern by longjmp out of the DLL. On Windows that
+    // jump is not reliable when the test runner has no console, and an
+    // unclosed group such as "(" takes the process down instead of returning
+    // an error. Qt's checker accepts the same patterns we want to reject.
+    const QRegularExpression::PatternOptions caseFold =
+        options.matchCase ? QRegularExpression::NoPatternOption
+                          : QRegularExpression::CaseInsensitiveOption;
+    const QRegularExpression probe(needle, caseFold);
+    if (!probe.isValid()) {
+        result.error = probe.errorString().isEmpty()
+            ? QStringLiteral("That regular expression could not be compiled")
+            : probe.errorString();
         return result;
     }
 
