@@ -18,7 +18,6 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
-#include <QProcess>
 #include <QTemporaryDir>
 
 #include <algorithm>
@@ -481,58 +480,6 @@ int main(int argc, char *argv[])
                     leftover = true;
             }
             check(!leftover, "applying the marks removes the matched word");
-        }
-
-        if (forms::certificateSigningAvailable()) {
-            std::printf("certificate\n");
-            const QString key = QDir(workDir).filePath(QStringLiteral("key.pem"));
-            const QString cert = QDir(workDir).filePath(QStringLiteral("cert.pem"));
-            const QString p12 = QDir(workDir).filePath(QStringLiteral("test.p12"));
-            const int keyMade = QProcess::execute(
-                QStringLiteral("openssl"),
-                { QStringLiteral("req"), QStringLiteral("-x509"), QStringLiteral("-newkey"),
-                  QStringLiteral("rsa:2048"), QStringLiteral("-keyout"), key,
-                  QStringLiteral("-out"), cert, QStringLiteral("-days"), QStringLiteral("2"),
-                  QStringLiteral("-nodes"), QStringLiteral("-subj"),
-                  QStringLiteral("/CN=SweetPDF Test") });
-            const int packed = QProcess::execute(
-                QStringLiteral("openssl"),
-                { QStringLiteral("pkcs12"), QStringLiteral("-export"), QStringLiteral("-out"), p12,
-                  QStringLiteral("-inkey"), key, QStringLiteral("-in"), cert,
-                  QStringLiteral("-passout"), QStringLiteral("pass:secret") });
-            check(keyMade == 0 && packed == 0, "openssl can make a test certificate");
-            if (keyMade == 0 && packed == 0) {
-                auto document = PdfDocument::open(source);
-                const QString path = QDir(workDir).filePath(QStringLiteral("signed.pdf"));
-                document->saveToFile(path);
-
-                forms::CertificateSignRequest request;
-                request.pdfPath = path;
-                request.certificatePath = p12;
-                request.certificatePassword = QStringLiteral("secret");
-                request.reason = QStringLiteral("edit test");
-                request.pageIndex = 0;
-                QString error;
-                const bool signedOk = forms::signWithCertificate(request, &error);
-                if (!signedOk)
-                    std::fprintf(stderr, "  sign error: %s\n", qPrintable(error));
-                check(signedOk, "a PKCS#7 signature can be written");
-                if (signedOk) {
-                    auto signedDoc = PdfDocument::open(path);
-                    bool saw = false;
-                    for (const FormField &field : forms::all(*signedDoc)) {
-                        if (field.type != FieldType::Signature || !field.signed_)
-                            continue;
-                        saw = true;
-                        check(field.signature == SignatureStatus::SelfSigned
-                                  || field.signature == SignatureStatus::Valid,
-                              "the new signature verifies");
-                        check(field.signer.contains(QStringLiteral("SweetPDF")),
-                              "the signer name is the certificate subject");
-                    }
-                    check(saw, "the signed file has a signature field");
-                }
-            }
         }
     } catch (const std::exception &failure) {
         std::fprintf(stderr, "edit test threw: %s\n", failure.what());

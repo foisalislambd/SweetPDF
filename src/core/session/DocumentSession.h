@@ -206,11 +206,6 @@ public:
     int markMatchingRedactions(const QString &needle, bool matchCase, bool wholeWords,
                                bool regularExpression, QString *errorMessage = nullptr);
 
-    /// Saves, signs with a PKCS#12 certificate, and reloads. The signature is
-    /// one undo step. Empty `errorMessage` on success.
-    bool signWithCertificate(const forms::CertificateSignRequest &request,
-                             QString *errorMessage = nullptr);
-
     // --- Structural edits -------------------------------------------------
 
     /// Runs `edit` on the document and pushes one undoable step for it, taking

@@ -41,21 +41,16 @@ find_package_handle_standard_args(MuPDF
 )
 
 if(MuPDF_FOUND AND NOT TARGET MuPDF::MuPDF)
-    # INTERFACE so the link line is exactly the list below. A static
-    # libmupdf-pkcs7 has to sit in the same group as libmupdf, or a
-    # single-pass link drops the signature helper's references.
-    add_library(MuPDF::MuPDF INTERFACE IMPORTED)
+    add_library(MuPDF::MuPDF UNKNOWN IMPORTED)
     set_target_properties(MuPDF::MuPDF PROPERTIES
+        IMPORTED_LOCATION "${MuPDF_LIBRARY}"
         INTERFACE_INCLUDE_DIRECTORIES "${MuPDF_INCLUDE_DIR}"
     )
 
     # MSYS2 ships both libmupdf.dll and libmupdf.a. CMake picks the import
-    # library. pdf_default_write_options and the other FZ_DATA symbols are
-    # real data in the DLL. Without dllimport, a struct copy reads the import
-    # thunk (a pointer plus whatever follows it in the exe) and a later save
-    # writes a file whose encryption strings do not decrypt. Opening that file
-    # warns "aes padding out of range" and then crashes. MuPDF's own header
-    # turns FZ_DATA into dllimport when FZ_DLL_CLIENT is set.
+    # library. pdf_default_write_options lives in the DLL. Without dllimport a
+    # struct copy reads the import thunk, and an encrypted save cannot be
+    # opened again. MuPDF's header turns FZ_DATA into dllimport when this is set.
     if(WIN32 AND MuPDF_LIBRARY MATCHES "\\.[Dd][Ll][Ll]\\.[Aa]$")
         set_property(TARGET MuPDF::MuPDF APPEND PROPERTY
             INTERFACE_COMPILE_DEFINITIONS FZ_DLL_CLIENT)
@@ -88,44 +83,6 @@ if(MuPDF_FOUND AND NOT TARGET MuPDF::MuPDF)
 
     if(NOT WIN32)
         list(APPEND _mupdf_link_libs m)
-    endif()
-
-    # scripts/build-mupdf.sh installs this beside the headers. Distribution
-    # packages usually do not, and then certificate signing stays compiled out.
-    find_library(MuPDF_PKCS7_LIBRARY
-        NAMES mupdf-pkcs7 libmupdf-pkcs7
-        HINTS ${MuPDF_ROOT} ENV MuPDF_ROOT
-        PATH_SUFFIXES lib lib64
-    )
-    set(MuPDF_HAS_PKCS7 FALSE)
-    if(MuPDF_PKCS7_LIBRARY
-       AND EXISTS "${MuPDF_INCLUDE_DIR}/mupdf/helpers/pkcs7-openssl.h")
-        find_package(OpenSSL)
-        if(OpenSSL_FOUND)
-            set(MuPDF_HAS_PKCS7 TRUE)
-            set_property(TARGET MuPDF::MuPDF APPEND PROPERTY
-                INTERFACE_COMPILE_DEFINITIONS SWEETPDF_HAS_PKCS7=1)
-        endif()
-    endif()
-
-    if(MuPDF_HAS_PKCS7 AND NOT APPLE)
-        set(_mupdf_link_libs
-            "-Wl,--start-group"
-            "${MuPDF_PKCS7_LIBRARY}"
-            "${MuPDF_LIBRARY}"
-            ${_mupdf_link_libs}
-            OpenSSL::Crypto
-            "-Wl,--end-group")
-    elseif(MuPDF_HAS_PKCS7)
-        # Apple's linker rescans, so the helper can come first and libmupdf again after.
-        set(_mupdf_link_libs
-            "${MuPDF_PKCS7_LIBRARY}"
-            "${MuPDF_LIBRARY}"
-            ${_mupdf_link_libs}
-            OpenSSL::Crypto
-            "${MuPDF_LIBRARY}")
-    else()
-        list(INSERT _mupdf_link_libs 0 "${MuPDF_LIBRARY}")
     endif()
 
     set_property(TARGET MuPDF::MuPDF PROPERTY

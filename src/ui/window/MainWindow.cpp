@@ -5,7 +5,6 @@
 #include "core/pdf/PdfExport.h"
 #include "core/session/DocumentSession.h"
 #include "core/pdf/PdfForms.h"
-#include "ui/dialogs/CertificateDialog.h"
 #include "ui/dialogs/CompareDialog.h"
 #include "ui/dialogs/ExportImagesDialog.h"
 #include "ui/dialogs/HeaderFooterDialog.h"
@@ -538,8 +537,6 @@ void MainWindow::createActions()
                       QKeySequence(), [this] { replyToSelection(); });
     addDocumentAction(QStringLiteral("sign"), tr("Sign"), QStringLiteral("sign"), QKeySequence(),
                       [this] { signDocument(); });
-    addDocumentAction(QStringLiteral("signCertificate"), tr("Certificate"), QStringLiteral("sign"),
-                      QKeySequence(), [this] { signWithCertificate(); });
     addDocumentAction(QStringLiteral("pageLabels"), tr("Page Labels"), QStringLiteral("pages"),
                       QKeySequence(), [this] { setPageLabels(); });
     addDocumentAction(QStringLiteral("redactSearch"), tr("Redact Matches"), QStringLiteral("redact"),
@@ -781,7 +778,6 @@ void MainWindow::createActions()
     shortCaption(QStringLiteral("addFormField"), tr("Field"));
     shortCaption(QStringLiteral("manageLinks"), tr("Links"));
     shortCaption(QStringLiteral("compare"), tr("Compare"));
-    shortCaption(QStringLiteral("signCertificate"), tr("Certify"));
     shortCaption(QStringLiteral("pageLabels"), tr("Labels"));
     shortCaption(QStringLiteral("redactSearch"), tr("Search"));
     shortCaption(QStringLiteral("nightMode"), tr("Night"));
@@ -1097,7 +1093,6 @@ void MainWindow::createRibbon()
     redaction->addAction(action(QStringLiteral("applyRedactions")));
     RibbonGroup *signing = protectPage->addGroup(tr("Signing"));
     signing->addAction(action(QStringLiteral("sign")));
-    signing->addAction(action(QStringLiteral("signCertificate")));
 
     RibbonPage *toolsPage = m_ribbon->addPage(tr("Tools"));
     RibbonGroup *recognise = toolsPage->addGroup(tr("Recognise"));
@@ -2986,46 +2981,6 @@ void MainWindow::redactSearchHits()
         return;
     }
     report(tr("Marked %n match(es). Apply redactions to remove the text.", nullptr, marked));
-}
-
-void MainWindow::signWithCertificate()
-{
-    auto *session = currentSession();
-    if (!session || !requireEditableDocument())
-        return;
-    if (!core::forms::certificateSigningAvailable()) {
-        reportError(tr("Certificate signing is not in this build"),
-                    tr("SweetPDF needs MuPDF's OpenSSL helper (libmupdf-pkcs7). "
-                       "scripts/build-mupdf.sh installs it; the copy from a Linux "
-                       "distribution usually does not."));
-        return;
-    }
-    if (session->filePath().isEmpty() && !saveDocumentAs(false))
-        return;
-
-    CertificateDialog dialog(this);
-    if (dialog.exec() != QDialog::Accepted)
-        return;
-    if (dialog.certificatePath().isEmpty()) {
-        report(tr("Choose a certificate."));
-        return;
-    }
-
-    core::forms::CertificateSignRequest request;
-    request.certificatePath = dialog.certificatePath();
-    request.certificatePassword = dialog.password();
-    request.reason = dialog.reason();
-    request.location = dialog.location();
-    request.pageIndex = session->currentPage();
-
-    QString error;
-    if (!session->signWithCertificate(request, &error)) {
-        reportError(tr("Could not sign"), error);
-        return;
-    }
-    m_sidebar->showPanel(Sidebar::Panel::Forms);
-    m_sidebar->setPanelVisible(true);
-    report(tr("Signed with a certificate. Keep later saves incremental so the signature stays valid."));
 }
 
 void MainWindow::mergeDocuments()

@@ -76,7 +76,6 @@ public Q_SLOTS:
     void attachFile();
     void setPageLabels();
     void redactSearchHits();
-    void signWithCertificate();
     void mergeDocuments();
     void splitDocument();
     void reversePages();

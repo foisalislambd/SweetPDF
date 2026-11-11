@@ -17,8 +17,6 @@ enum class SignatureStatus {
     Invalid,
     BrokenByEdits, ///< The signature was valid until unsaved changes.
     Unchecked,     ///< The check could not run (missing crypto, or it threw).
-    /// The digest matches. The certificate is self-signed or not in the trust store.
-    SelfSigned,
 };
 
 /// The kinds of AcroForm field SweetPDF can fill in.
@@ -52,8 +50,6 @@ struct FormField
     bool multiline = false;
     bool signed_ = false; ///< Signature fields that already carry a signature.
     SignatureStatus signature = SignatureStatus::NotApplicable;
-    /// Who signed, when the PKCS#7 helper can read the certificate. Empty otherwise.
-    QString signer;
 };
 
 /// Reads and fills the interactive form of one document.
@@ -95,27 +91,6 @@ bool resetAll(PdfDocument &document);
 bool flatten(PdfDocument &document, bool annotationsToo, bool widgetsToo);
 
 QString displayName(FieldType type);
-
-/// True when this build can create a PKCS#7 signature from a .pfx / .p12 file.
-bool certificateSigningAvailable();
-
-/// What `signWithCertificate` needs. The PDF must already be the file on disk
-/// that should be signed; the function rewrites that path.
-struct CertificateSignRequest
-{
-    QString pdfPath;
-    QString certificatePath;
-    QString certificatePassword;
-    QString reason;
-    QString location;
-    int pageIndex = 0;
-    /// Signature box in page points. Empty places it at the lower right.
-    QRectF rect;
-};
-
-/// Adds a signature field, signs it with the certificate, and writes the PDF
-/// back to `pdfPath`. Failure leaves that path unchanged.
-bool signWithCertificate(const CertificateSignRequest &request, QString *errorMessage);
 
 } // namespace forms
 } // namespace sweet::core

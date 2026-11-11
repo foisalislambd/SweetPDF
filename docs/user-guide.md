@@ -48,7 +48,6 @@ reorder. Merge and split live under Page / Tools.
 into page content.
 
 **Sign** — Draw, type or import a signature and place it on one page or all.
-**Certificate** on Protect signs with a PKCS#12 file when the MuPDF helper is linked.
 
 **Protect** — Encrypt with permissions; mark redactions (or **Redact Matches** /
 the find-bar redact button) then **Apply**; watermarks.

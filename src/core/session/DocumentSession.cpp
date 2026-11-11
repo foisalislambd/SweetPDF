@@ -7,7 +7,6 @@
 #include "core/session/EditCommands.h"
 #include "core/util/Logging.h"
 
-#include <QFile>
 #include <QFileInfo>
 
 namespace sweet::core {
@@ -800,64 +799,6 @@ int DocumentSession::markMatchingRedactions(const QString &needle, bool matchCas
     if (ok)
         Q_EMIT annotationsChanged(-1);
     return ok ? marked : 0;
-}
-
-bool DocumentSession::signWithCertificate(const forms::CertificateSignRequest &request,
-                                          QString *errorMessage)
-{
-    if (!m_document || !m_document->isPdf()) {
-        if (errorMessage)
-            *errorMessage = tr("This file format can be viewed but not edited.");
-        return false;
-    }
-    if (m_filePath.isEmpty()) {
-        if (errorMessage)
-            *errorMessage = tr("Save the document before signing it.");
-        return false;
-    }
-
-    // The signature is computed over the bytes on disk, so pending edits have
-    // to be written first. A full save here is what those edits become.
-    try {
-        SaveOptions options;
-        options.incremental = false;
-        m_document->saveToFile(m_filePath, options);
-    } catch (const MuError &failure) {
-        if (errorMessage)
-            *errorMessage = failure.details();
-        return false;
-    }
-
-    forms::CertificateSignRequest onDisk = request;
-    onDisk.pdfPath = m_filePath;
-
-    QFile beforeFile(m_filePath);
-    if (!beforeFile.open(QIODevice::ReadOnly)) {
-        if (errorMessage)
-            *errorMessage = tr("Could not read the saved document.");
-        return false;
-    }
-    const QByteArray before = beforeFile.readAll();
-    beforeFile.close();
-
-    if (!forms::signWithCertificate(onDisk, errorMessage))
-        return false;
-
-    QFile afterFile(m_filePath);
-    if (!afterFile.open(QIODevice::ReadOnly)) {
-        if (errorMessage)
-            *errorMessage = tr("The document was signed, but it could not be reloaded.");
-        return false;
-    }
-    QByteArray after = afterFile.readAll();
-    afterFile.close();
-
-    restoreDocumentBytes(after);
-    m_undoStack->push(new StructuralEditCommand(this, before, std::move(after),
-                                                tr("Sign with certificate")));
-    setModified(true);
-    Q_EMIT formsChanged(-1);
-    return true;
 }
 
 void DocumentSession::invalidatePage(int pageIndex)

@@ -7,19 +7,8 @@
 #include "core/util/Logging.h"
 
 #include <QCoreApplication>
-#include <QFile>
-#include <QFileInfo>
-#include <QSaveFile>
 
 #include <mupdf/pdf.h>
-
-#if SWEETPDF_HAS_PKCS7
-// The helper is a C archive. Without this, the declarations are mangled and
-// the static library's symbols do not match.
-extern "C" {
-#include <mupdf/helpers/pkcs7-openssl.h>
-}
-#endif
 
 namespace sweet::core::forms {
 namespace {
@@ -100,49 +89,6 @@ FormField describe(fz_context *ctx, pdf_annot *widget, int pageIndex)
         if (!field.signed_) {
             field.signature = SignatureStatus::Unsigned;
         } else {
-#if SWEETPDF_HAS_PKCS7
-            // The OpenSSL helper can name the signer and tell a self-signed
-            // certificate apart from a broken digest. pdf_validate_signature
-            // collapses both of those into "invalid".
-            pdf_pkcs7_verifier *verifier = nullptr;
-            pdf_pkcs7_distinguished_name *name = nullptr;
-            bool checked = false;
-            pdf_signature_error digest = PDF_SIGNATURE_ERROR_UNKNOWN;
-            pdf_signature_error certificate = PDF_SIGNATURE_ERROR_UNKNOWN;
-            fz_var(verifier);
-            fz_var(name);
-            fz_var(checked);
-            fz_try(ctx) {
-                verifier = pkcs7_openssl_new_verifier(ctx);
-                name = pdf_signature_get_widget_signatory(ctx, verifier, widget);
-                if (name) {
-                    char *formatted = pdf_signature_format_distinguished_name(ctx, name);
-                    field.signer = ownedString(ctx, formatted);
-                }
-                digest = pdf_check_widget_digest(ctx, verifier, widget);
-                certificate = pdf_check_widget_certificate(ctx, verifier, widget);
-                checked = true;
-            }
-            fz_always(ctx) {
-                pdf_signature_drop_distinguished_name(ctx, name);
-                pdf_drop_verifier(ctx, verifier);
-            }
-            fz_catch(ctx)
-                checked = false;
-
-            if (!checked)
-                field.signature = SignatureStatus::Unchecked;
-            else if (digest != PDF_SIGNATURE_ERROR_OKAY)
-                field.signature = SignatureStatus::Invalid;
-            else if (certificate == PDF_SIGNATURE_ERROR_OKAY)
-                field.signature = SignatureStatus::Valid;
-            else if (certificate == PDF_SIGNATURE_ERROR_SELF_SIGNED
-                     || certificate == PDF_SIGNATURE_ERROR_SELF_SIGNED_IN_CHAIN
-                     || certificate == PDF_SIGNATURE_ERROR_NOT_TRUSTED)
-                field.signature = SignatureStatus::SelfSigned;
-            else
-                field.signature = SignatureStatus::Unchecked;
-#else
             int status = 0;
             bool checked = false;
             fz_var(status);
@@ -167,7 +113,6 @@ FormField describe(fz_context *ctx, pdf_annot *widget, int pageIndex)
                 field.signature = SignatureStatus::BrokenByEdits;
             else
                 field.signature = SignatureStatus::Invalid;
-#endif
         }
     }
 
@@ -521,150 +466,6 @@ bool createField(PdfDocument &document, int pageIndex, NewFieldKind kind, const 
             page->discardDisplayList();
     }
     return created;
-}
-
-bool certificateSigningAvailable()
-{
-#if SWEETPDF_HAS_PKCS7
-    return true;
-#else
-    return false;
-#endif
-}
-
-bool signWithCertificate(const CertificateSignRequest &request, QString *errorMessage)
-{
-    const auto fail = [errorMessage](const QString &message) {
-        if (errorMessage)
-            *errorMessage = message;
-        return false;
-    };
-
-#if !SWEETPDF_HAS_PKCS7
-    Q_UNUSED(request);
-    return fail(QCoreApplication::translate(
-        "PdfForms",
-        "This build has no PKCS#7 signer. Run scripts/build-mupdf.sh (it installs "
-        "libmupdf-pkcs7) and make sure OpenSSL is available, then reconfigure."));
-#else
-    if (request.pdfPath.isEmpty() || request.certificatePath.isEmpty())
-        return fail(QCoreApplication::translate("PdfForms", "Choose a PDF and a certificate."));
-    if (!QFileInfo::exists(request.pdfPath) || !QFileInfo::exists(request.certificatePath))
-        return fail(QCoreApplication::translate("PdfForms", "The PDF or the certificate is missing."));
-
-    // Staged files so a failed sign never truncates the document the caller has.
-    const QString staged = request.pdfPath + QStringLiteral(".signing");
-    const QString signedCopy = request.pdfPath + QStringLiteral(".signed");
-    QFile::remove(staged);
-    QFile::remove(signedCopy);
-
-    fz_context *ctx = MuContext::forThread();
-    const QByteArray certificate = request.certificatePath.toUtf8();
-    const QByteArray password = request.certificatePassword.toUtf8();
-    const QByteArray reason = request.reason.toUtf8();
-    const QByteArray location = request.location.toUtf8();
-    const QByteArray stagedPath = staged.toUtf8();
-    const QByteArray signedPath = signedCopy.toUtf8();
-    QByteArray fieldName;
-
-    pdf_document *document = nullptr;
-    fz_var(document);
-    fz_try(ctx) {
-        document = pdf_open_document(ctx, request.pdfPath.toUtf8().constData());
-        if (request.pageIndex < 0 || request.pageIndex >= pdf_count_pages(ctx, document))
-            fz_throw(ctx, FZ_ERROR_ARGUMENT, "page is outside the document");
-
-        pdf_page *page = pdf_load_page(ctx, document, request.pageIndex);
-        char generated[64] = { 0 };
-        pdf_create_field_name(ctx, document, "Signature", generated, sizeof(generated));
-        fieldName = generated;
-        pdf_annot *widget = pdf_create_signature_widget(ctx, page, generated);
-        fz_rect box = toFzRect(request.rect);
-        if (request.rect.isEmpty()) {
-            const fz_rect bounds = fz_bound_page(ctx, reinterpret_cast<fz_page *>(page));
-            box = fz_make_rect(bounds.x1 - 220.f, bounds.y1 - 90.f, bounds.x1 - 36.f,
-                               bounds.y1 - 36.f);
-        }
-        pdf_set_annot_rect(ctx, widget, box);
-        pdf_set_annot_flags(ctx, widget, PDF_ANNOT_IS_PRINT);
-        pdf_update_annot(ctx, widget);
-        pdf_drop_widget(ctx, widget);
-        fz_drop_page(ctx, reinterpret_cast<fz_page *>(page));
-
-        // The signature's byte range is computed against a file that already
-        // contains the widget, so this full save happens before the signature.
-        pdf_write_options full = pdf_default_write_options;
-        full.do_incremental = 0;
-        pdf_save_document(ctx, document, stagedPath.constData(), &full);
-    }
-    fz_always(ctx)
-        pdf_drop_document(ctx, document);
-    fz_catch(ctx) {
-        QFile::remove(staged);
-        return fail(QString::fromUtf8(fz_caught_message(ctx)));
-    }
-
-    document = nullptr;
-    pdf_pkcs7_signer *signer = nullptr;
-    fz_var(document);
-    fz_var(signer);
-    fz_try(ctx) {
-        document = pdf_open_document(ctx, stagedPath.constData());
-        signer = pkcs7_openssl_read_pfx(ctx, certificate.constData(), password.constData());
-        pdf_page *page = pdf_load_page(ctx, document, request.pageIndex);
-        pdf_annot *widget = nullptr;
-        for (pdf_annot *candidate = pdf_first_widget(ctx, page); candidate;
-             candidate = pdf_next_widget(ctx, candidate)) {
-            if (pdf_widget_type(ctx, candidate) != PDF_WIDGET_TYPE_SIGNATURE)
-                continue;
-            if (pdf_widget_is_signed(ctx, candidate))
-                continue;
-            const QString name = ownedString(ctx, pdf_load_field_name(ctx, pdf_annot_obj(ctx, candidate)));
-            if (name.toUtf8() == fieldName) {
-                widget = candidate;
-                break;
-            }
-        }
-        if (!widget)
-            fz_throw(ctx, FZ_ERROR_GENERIC, "the signature field was not saved");
-        pdf_sign_signature(ctx, widget, signer, PDF_SIGNATURE_DEFAULT_APPEARANCE, nullptr,
-                           reason.isEmpty() ? nullptr : reason.constData(),
-                           location.isEmpty() ? nullptr : location.constData());
-        fz_drop_page(ctx, reinterpret_cast<fz_page *>(page));
-
-        pdf_write_options incremental = pdf_default_write_options;
-        incremental.do_incremental = 1;
-        pdf_save_document(ctx, document, signedPath.constData(), &incremental);
-    }
-    fz_always(ctx) {
-        pdf_drop_signer(ctx, signer);
-        pdf_drop_document(ctx, document);
-    }
-    fz_catch(ctx) {
-        QFile::remove(staged);
-        QFile::remove(signedCopy);
-        return fail(QString::fromUtf8(fz_caught_message(ctx)));
-    }
-
-    QFile signedFile(signedCopy);
-    if (!signedFile.open(QIODevice::ReadOnly)) {
-        QFile::remove(staged);
-        QFile::remove(signedCopy);
-        return fail(QCoreApplication::translate("PdfForms", "Could not read the signed file."));
-    }
-    const QByteArray bytes = signedFile.readAll();
-    signedFile.close();
-
-    QSaveFile out(request.pdfPath);
-    if (!out.open(QIODevice::WriteOnly) || out.write(bytes) != bytes.size() || !out.commit()) {
-        QFile::remove(staged);
-        QFile::remove(signedCopy);
-        return fail(out.errorString());
-    }
-    QFile::remove(staged);
-    QFile::remove(signedCopy);
-    return true;
-#endif
 }
 
 } // namespace sweet::core::forms
