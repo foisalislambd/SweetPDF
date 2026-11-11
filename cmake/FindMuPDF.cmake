@@ -41,9 +41,11 @@ find_package_handle_standard_args(MuPDF
 )
 
 if(MuPDF_FOUND AND NOT TARGET MuPDF::MuPDF)
-    add_library(MuPDF::MuPDF UNKNOWN IMPORTED)
+    # INTERFACE so the link line is exactly the list below. A static
+    # libmupdf-pkcs7 has to sit in the same group as libmupdf, or a
+    # single-pass link drops the signature helper's references.
+    add_library(MuPDF::MuPDF INTERFACE IMPORTED)
     set_target_properties(MuPDF::MuPDF PROPERTIES
-        IMPORTED_LOCATION "${MuPDF_LIBRARY}"
         INTERFACE_INCLUDE_DIRECTORIES "${MuPDF_INCLUDE_DIR}"
     )
 
@@ -55,7 +57,7 @@ if(MuPDF_FOUND AND NOT TARGET MuPDF::MuPDF)
     # A USE_SYSTEM_LIBS MuPDF build still ships libmupdf-third.a for the pieces
     # it vendors (mujs, lcms) and expects the codecs from the system. Linking
     # them is harmless for a shared libmupdf that already pulls the same
-    # libraries in, and it is required for the static 1.28.5 build.
+    # libraries in, and it is required for the static 1.28 build.
     foreach(_dep freetype harfbuzz jpeg openjp2 jbig2dec z brotlidec brotlienc brotlicommon)
         find_library(_mupdf_dep_${_dep} NAMES ${_dep})
         if(_mupdf_dep_${_dep})
@@ -74,6 +76,44 @@ if(MuPDF_FOUND AND NOT TARGET MuPDF::MuPDF)
 
     if(NOT WIN32)
         list(APPEND _mupdf_link_libs m)
+    endif()
+
+    # scripts/build-mupdf.sh installs this beside the headers. Distribution
+    # packages usually do not, and then certificate signing stays compiled out.
+    find_library(MuPDF_PKCS7_LIBRARY
+        NAMES mupdf-pkcs7 libmupdf-pkcs7
+        HINTS ${MuPDF_ROOT} ENV MuPDF_ROOT
+        PATH_SUFFIXES lib lib64
+    )
+    set(MuPDF_HAS_PKCS7 FALSE)
+    if(MuPDF_PKCS7_LIBRARY
+       AND EXISTS "${MuPDF_INCLUDE_DIR}/mupdf/helpers/pkcs7-openssl.h")
+        find_package(OpenSSL)
+        if(OpenSSL_FOUND)
+            set(MuPDF_HAS_PKCS7 TRUE)
+            set_property(TARGET MuPDF::MuPDF APPEND PROPERTY
+                INTERFACE_COMPILE_DEFINITIONS SWEETPDF_HAS_PKCS7=1)
+        endif()
+    endif()
+
+    if(MuPDF_HAS_PKCS7 AND NOT APPLE)
+        set(_mupdf_link_libs
+            "-Wl,--start-group"
+            "${MuPDF_PKCS7_LIBRARY}"
+            "${MuPDF_LIBRARY}"
+            ${_mupdf_link_libs}
+            OpenSSL::Crypto
+            "-Wl,--end-group")
+    elseif(MuPDF_HAS_PKCS7)
+        # Apple's linker rescans, so the helper can come first and libmupdf again after.
+        set(_mupdf_link_libs
+            "${MuPDF_PKCS7_LIBRARY}"
+            "${MuPDF_LIBRARY}"
+            ${_mupdf_link_libs}
+            OpenSSL::Crypto
+            "${MuPDF_LIBRARY}")
+    else()
+        list(INSERT _mupdf_link_libs 0 "${MuPDF_LIBRARY}")
     endif()
 
     set_property(TARGET MuPDF::MuPDF PROPERTY

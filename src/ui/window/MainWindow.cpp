@@ -4,6 +4,8 @@
 #include "core/pdf/PdfDocument.h"
 #include "core/pdf/PdfExport.h"
 #include "core/session/DocumentSession.h"
+#include "core/pdf/PdfForms.h"
+#include "ui/dialogs/CertificateDialog.h"
 #include "ui/dialogs/CompareDialog.h"
 #include "ui/dialogs/ExportImagesDialog.h"
 #include "ui/dialogs/HeaderFooterDialog.h"
@@ -52,6 +54,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QMimeDatabase>
 #include <QPainter>
 #include <QPair>
 #include <QPrintDialog>
@@ -535,6 +538,12 @@ void MainWindow::createActions()
                       QKeySequence(), [this] { replyToSelection(); });
     addDocumentAction(QStringLiteral("sign"), tr("Sign"), QStringLiteral("sign"), QKeySequence(),
                       [this] { signDocument(); });
+    addDocumentAction(QStringLiteral("signCertificate"), tr("Certificate"), QStringLiteral("sign"),
+                      QKeySequence(), [this] { signWithCertificate(); });
+    addDocumentAction(QStringLiteral("pageLabels"), tr("Page Labels"), QStringLiteral("pages"),
+                      QKeySequence(), [this] { setPageLabels(); });
+    addDocumentAction(QStringLiteral("redactSearch"), tr("Redact Matches"), QStringLiteral("redact"),
+                      QKeySequence(), [this] { redactSearchHits(); });
     addDocumentAction(QStringLiteral("forms"), tr("Form Fields"), QStringLiteral("form"),
                       QKeySequence(), [this] {
                           m_sidebar->showPanel(Sidebar::Panel::Forms);
@@ -772,6 +781,9 @@ void MainWindow::createActions()
     shortCaption(QStringLiteral("addFormField"), tr("Field"));
     shortCaption(QStringLiteral("manageLinks"), tr("Links"));
     shortCaption(QStringLiteral("compare"), tr("Compare"));
+    shortCaption(QStringLiteral("signCertificate"), tr("Certify"));
+    shortCaption(QStringLiteral("pageLabels"), tr("Labels"));
+    shortCaption(QStringLiteral("redactSearch"), tr("Search"));
     shortCaption(QStringLiteral("nightMode"), tr("Night"));
     shortCaption(QStringLiteral("reversePages"), tr("Reverse"));
     shortCaption(QStringLiteral("rotateAllPages"), tr("All"));
@@ -1036,6 +1048,7 @@ void MainWindow::createRibbon()
     organise->addCompactAction(action(QStringLiteral("duplicatePage")));
     organise->addCompactAction(action(QStringLiteral("cropPage")));
     organise->addCompactAction(action(QStringLiteral("headerFooter")));
+    organise->addCompactAction(action(QStringLiteral("pageLabels")));
     organise->addCompactAction(action(QStringLiteral("pageSize")));
     organise->addCompactAction(action(QStringLiteral("deskew")));
     organise->addCompactAction(action(QStringLiteral("insertScan")));
@@ -1080,9 +1093,11 @@ void MainWindow::createRibbon()
     security->addAction(action(QStringLiteral("watermark")));
     RibbonGroup *redaction = protectPage->addGroup(tr("Redaction"));
     redaction->addAction(action(QStringLiteral("toolRedact")));
+    redaction->addAction(action(QStringLiteral("redactSearch")));
     redaction->addAction(action(QStringLiteral("applyRedactions")));
     RibbonGroup *signing = protectPage->addGroup(tr("Signing"));
     signing->addAction(action(QStringLiteral("sign")));
+    signing->addAction(action(QStringLiteral("signCertificate")));
 
     RibbonPage *toolsPage = m_ribbon->addPage(tr("Tools"));
     RibbonGroup *recognise = toolsPage->addGroup(tr("Recognise"));
@@ -1217,6 +1232,7 @@ void MainWindow::createCentralArea()
     connect(m_sidebar, &Sidebar::insertFileRequested, this, &MainWindow::insertPagesFromFile);
     connect(m_sidebar, &Sidebar::statusMessage, this, &MainWindow::report);
     connect(m_sidebar, &Sidebar::saveAttachmentRequested, this, &MainWindow::saveEmbeddedFile);
+    connect(m_sidebar, &Sidebar::addAttachmentRequested, this, &MainWindow::attachFile);
     connect(m_sidebar, &Sidebar::panelVisibilityChanged, this, [this](bool visible) {
         QAction *toggle = action(QStringLiteral("toggleSidebar"));
         if (toggle->isChecked() != visible) {
@@ -1436,6 +1452,10 @@ void MainWindow::finishOpening(core::DocumentSession *session, const QString &pa
     connect(findBar, &FindBar::dismissed, view, [view] {
         view->clearMatches();
         view->setFocus();
+    });
+    connect(findBar, &FindBar::redactRequested, this, [this, findBar] {
+        if (findBar == currentFindBar())
+            redactSearchHits();
     });
     connect(view, &PageView::statusMessage, this, &MainWindow::report);
     connect(view, &PageView::textReplaceRequested, this,
@@ -2861,6 +2881,153 @@ void MainWindow::saveEmbeddedFile(int index)
     report(tr("Saved %1.").arg(QFileInfo(path).fileName()));
 }
 
+void MainWindow::attachFile()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument())
+        return;
+
+    const QString path = QFileDialog::getOpenFileName(this, tr("Attach a file"));
+    if (path.isEmpty())
+        return;
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        reportError(tr("Could not read the file"), file.errorString());
+        return;
+    }
+    const QByteArray bytes = file.readAll();
+    const QString mime = QMimeDatabase().mimeTypeForFile(path).name();
+    if (!session->addEmbeddedFile(QFileInfo(path).fileName(), bytes, mime)) {
+        reportError(tr("Could not attach the file"), path);
+        return;
+    }
+    m_sidebar->showPanel(Sidebar::Panel::Attachments);
+    m_sidebar->setPanelVisible(true);
+    report(tr("Attached %1.").arg(QFileInfo(path).fileName()));
+}
+
+void MainWindow::setPageLabels()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument())
+        return;
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Page labels"));
+    auto *form = new QFormLayout;
+    auto *style = new QComboBox(&dialog);
+    style->addItem(tr("1, 2, 3"), int(core::PdfDocument::PageLabelStyle::Decimal));
+    style->addItem(tr("i, ii, iii"), int(core::PdfDocument::PageLabelStyle::RomanLower));
+    style->addItem(tr("I, II, III"), int(core::PdfDocument::PageLabelStyle::RomanUpper));
+    style->addItem(tr("a, b, c"), int(core::PdfDocument::PageLabelStyle::AlphaLower));
+    style->addItem(tr("A, B, C"), int(core::PdfDocument::PageLabelStyle::AlphaUpper));
+    form->addRow(tr("Style"), style);
+    auto *prefix = new QLineEdit(&dialog);
+    prefix->setPlaceholderText(tr("Optional, such as A-"));
+    form->addRow(tr("Prefix"), prefix);
+    auto *start = new QSpinBox(&dialog);
+    start->setRange(1, 999999);
+    start->setValue(1);
+    form->addRow(tr("Start at"), start);
+    auto *from = new QSpinBox(&dialog);
+    from->setRange(1, session->pageCount());
+    from->setValue(session->currentPage() + 1);
+    form->addRow(tr("From page"), from);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel | QDialogButtonBox::Ok, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    auto *column = new QVBoxLayout(&dialog);
+    column->addLayout(form);
+    column->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    const auto chosen = static_cast<core::PdfDocument::PageLabelStyle>(style->currentData().toInt());
+    if (!session->setPageLabels(from->value() - 1, chosen, prefix->text().trimmed(), start->value())) {
+        reportError(tr("Could not set page labels"), QString());
+        return;
+    }
+    const QString label = session->document()->pageLabel(from->value() - 1);
+    report(label.isEmpty() ? tr("Page labels updated.")
+                           : tr("Page %1 is now labeled %2.").arg(from->value()).arg(label));
+}
+
+void MainWindow::redactSearchHits()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument())
+        return;
+
+    FindBar *bar = currentFindBar();
+    QString needle = bar ? bar->query().trimmed() : QString();
+    bool matchCase = bar && bar->matchCase();
+    bool wholeWords = bar && bar->wholeWords();
+    bool regex = bar && bar->regularExpression();
+    if (needle.isEmpty()) {
+        showFindBar();
+        bar = currentFindBar();
+        bool accepted = false;
+        needle = QInputDialog::getText(this, tr("Redact matches"), tr("Text to redact:"),
+                                       QLineEdit::Normal, QString(), &accepted);
+        if (!accepted || needle.trimmed().isEmpty())
+            return;
+        needle = needle.trimmed();
+        matchCase = false;
+        wholeWords = false;
+        regex = false;
+        if (bar)
+            bar->activate(needle);
+    }
+
+    QString error;
+    const int marked = session->markMatchingRedactions(needle, matchCase, wholeWords, regex, &error);
+    if (marked == 0) {
+        reportError(tr("Nothing was marked"), error.isEmpty() ? tr("No matches.") : error);
+        return;
+    }
+    report(tr("Marked %n match(es). Apply redactions to remove the text.", nullptr, marked));
+}
+
+void MainWindow::signWithCertificate()
+{
+    auto *session = currentSession();
+    if (!session || !requireEditableDocument())
+        return;
+    if (!core::forms::certificateSigningAvailable()) {
+        reportError(tr("Certificate signing is not in this build"),
+                    tr("SweetPDF needs MuPDF's OpenSSL helper (libmupdf-pkcs7). "
+                       "scripts/build-mupdf.sh installs it; the copy from a Linux "
+                       "distribution usually does not."));
+        return;
+    }
+    if (session->filePath().isEmpty() && !saveDocumentAs(false))
+        return;
+
+    CertificateDialog dialog(this);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    if (dialog.certificatePath().isEmpty()) {
+        report(tr("Choose a certificate."));
+        return;
+    }
+
+    core::forms::CertificateSignRequest request;
+    request.certificatePath = dialog.certificatePath();
+    request.certificatePassword = dialog.password();
+    request.reason = dialog.reason();
+    request.location = dialog.location();
+    request.pageIndex = session->currentPage();
+
+    QString error;
+    if (!session->signWithCertificate(request, &error)) {
+        reportError(tr("Could not sign"), error);
+        return;
+    }
+    m_sidebar->showPanel(Sidebar::Panel::Forms);
+    m_sidebar->setPanelVisible(true);
+    report(tr("Signed with a certificate. Keep later saves incremental so the signature stays valid."));
+}
+
 void MainWindow::mergeDocuments()
 {
     auto *session = currentSession();
@@ -3965,6 +4132,8 @@ void MainWindow::compressDocument()
     // Rewriting and sanitising the content streams is where most of the saving
     // comes from on documents produced by office software.
     options.cleanContentStreams = true;
+    options.compressionEffort = 100;
+    options.reproducible = true;
 
     QString error;
     if (!session->saveAs(path, options, true, &error)) {

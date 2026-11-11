@@ -61,8 +61,7 @@ QImage pixmapToImage(fz_context *ctx, fz_pixmap *pixmap)
 } // namespace
 
 PdfPage::PdfPage(fz_document *document, int index, std::mutex &parseMutex)
-    : m_document(document)
-    , m_parseMutex(&parseMutex)
+    : m_parseMutex(&parseMutex)
     , m_index(index)
 {
     const std::lock_guard<std::mutex> guard(parseMutex);

@@ -266,11 +266,19 @@ void FormsPanel::addRow(const core::FormField &field)
         case core::SignatureStatus::Unchecked:
             text = field.signed_ ? tr("Signed, but it could not be checked") : tr("Not signed");
             break;
+        case core::SignatureStatus::SelfSigned:
+            text = field.signer.isEmpty()
+                       ? tr("Signature matches. The certificate is not in the trust store.")
+                       : tr("Signed by %1. The certificate is not in the trust store.")
+                             .arg(field.signer);
+            break;
         case core::SignatureStatus::Unsigned:
         case core::SignatureStatus::NotApplicable:
             text = tr("Not signed");
             break;
         }
+        if (!field.signer.isEmpty() && field.signature == core::SignatureStatus::Valid)
+            text = tr("Valid signature from %1").arg(field.signer);
         auto *state = new QLabel(text, row);
         state->setObjectName(QStringLiteral("SectionLabel"));
         state->setWordWrap(true);

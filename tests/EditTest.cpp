@@ -18,6 +18,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
+#include <QProcess>
 #include <QTemporaryDir>
 
 #include <algorithm>
@@ -420,6 +421,114 @@ int main(int argc, char *argv[])
                        "flattening keeps every page");
             checkEqual(annotations::onPage(*flattened, 0).size(), qsizetype(0),
                        "the flattened annotation is no longer interactive");
+        }
+
+        // --- Bookmarks, attachments, labels, search-and-redact ------------
+        std::printf("organise\n");
+        {
+            auto document = PdfDocument::open(source);
+            const int before = document->outline().size();
+            check(document->addBookmark(QStringLiteral("Alpha"), 0), "a bookmark can be added");
+            check(document->addBookmark(QStringLiteral("Beta"), 1), "a second bookmark can be added");
+            check(document->moveBookmark({ before + 1 }, -1), "a bookmark can move up");
+            const QList<OutlineNode> moved = document->outline();
+            check(moved.size() >= before + 2, "both new bookmarks are still there");
+            check(moved.at(before).title == QStringLiteral("Beta"),
+                  "moving up swaps it with the previous bookmark");
+            check(moved.at(before + 1).title == QStringLiteral("Alpha"),
+                  "the displaced bookmark follows it");
+
+            check(document->addEmbeddedFile(QStringLiteral("note.txt"),
+                                            QByteArray("hello sweetpdf"),
+                                            QStringLiteral("text/plain")),
+                  "a file can be embedded");
+
+            document->setPageLabels(0, PdfDocument::PageLabelStyle::Decimal, QStringLiteral("T-"),
+                                    3);
+            check(document->pageLabel(0) == QStringLiteral("T-3"), "the first page label is T-3");
+            check(document->pageLabel(1) == QStringLiteral("T-4"), "numbering continues on the next page");
+
+            const int marked =
+                document->markMatchingRedactions(QStringLiteral("SweetPDF"), false, true, false);
+            check(marked > 0, "search can mark every match for redaction");
+            for (int index = 0; index < document->pageCount(); ++index)
+                document->applyRedactions(index);
+
+            SaveOptions tight;
+            tight.compressionEffort = 100;
+            tight.reproducible = true;
+            tight.cleanContentStreams = true;
+            auto rewritten = PdfDocument::openFromBytes(document->toBytes(tight), QString());
+            bool leftover = false;
+            bool foundNote = false;
+            const QList<EmbeddedFile> files = rewritten->embeddedFiles();
+            for (int index = 0; index < files.size(); ++index) {
+                if (files.at(index).name != QStringLiteral("note.txt"))
+                    continue;
+                foundNote = true;
+                check(rewritten->embeddedFileContents(index) == QByteArray("hello sweetpdf"),
+                      "the attachment keeps its bytes");
+            }
+            check(foundNote, "the attachment survives a save");
+            check(rewritten->pageLabel(0) == QStringLiteral("T-3"), "page labels survive a save");
+            for (int index = 0; index < rewritten->pageCount(); ++index) {
+                if (rewritten->page(index)->text().contains(QStringLiteral("SweetPDF"),
+                                                           Qt::CaseInsensitive))
+                    leftover = true;
+            }
+            check(!leftover, "applying the marks removes the matched word");
+        }
+
+        if (forms::certificateSigningAvailable()) {
+            std::printf("certificate\n");
+            const QString key = QDir(workDir).filePath(QStringLiteral("key.pem"));
+            const QString cert = QDir(workDir).filePath(QStringLiteral("cert.pem"));
+            const QString p12 = QDir(workDir).filePath(QStringLiteral("test.p12"));
+            const int keyMade = QProcess::execute(
+                QStringLiteral("openssl"),
+                { QStringLiteral("req"), QStringLiteral("-x509"), QStringLiteral("-newkey"),
+                  QStringLiteral("rsa:2048"), QStringLiteral("-keyout"), key,
+                  QStringLiteral("-out"), cert, QStringLiteral("-days"), QStringLiteral("2"),
+                  QStringLiteral("-nodes"), QStringLiteral("-subj"),
+                  QStringLiteral("/CN=SweetPDF Test") });
+            const int packed = QProcess::execute(
+                QStringLiteral("openssl"),
+                { QStringLiteral("pkcs12"), QStringLiteral("-export"), QStringLiteral("-out"), p12,
+                  QStringLiteral("-inkey"), key, QStringLiteral("-in"), cert,
+                  QStringLiteral("-passout"), QStringLiteral("pass:secret") });
+            check(keyMade == 0 && packed == 0, "openssl can make a test certificate");
+            if (keyMade == 0 && packed == 0) {
+                auto document = PdfDocument::open(source);
+                const QString path = QDir(workDir).filePath(QStringLiteral("signed.pdf"));
+                document->saveToFile(path);
+
+                forms::CertificateSignRequest request;
+                request.pdfPath = path;
+                request.certificatePath = p12;
+                request.certificatePassword = QStringLiteral("secret");
+                request.reason = QStringLiteral("edit test");
+                request.pageIndex = 0;
+                QString error;
+                const bool signedOk = forms::signWithCertificate(request, &error);
+                if (!signedOk)
+                    std::fprintf(stderr, "  sign error: %s\n", qPrintable(error));
+                check(signedOk, "a PKCS#7 signature can be written");
+                if (signedOk) {
+                    auto signedDoc = PdfDocument::open(path);
+                    bool saw = false;
+                    for (const FormField &field : forms::all(*signedDoc)) {
+                        if (field.type != FieldType::Signature || !field.signed_)
+                            continue;
+                        saw = true;
+                        check(field.signature == SignatureStatus::SelfSigned
+                                  || field.signature == SignatureStatus::Valid,
+                              "the new signature verifies");
+                        check(field.signer.contains(QStringLiteral("SweetPDF")),
+                              "the signer name is the certificate subject");
+                    }
+                    check(saw, "the signed file has a signature field");
+                }
+            }
         }
     } catch (const std::exception &failure) {
         std::fprintf(stderr, "edit test threw: %s\n", failure.what());

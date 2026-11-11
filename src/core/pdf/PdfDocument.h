@@ -54,6 +54,11 @@ struct SaveOptions
     bool cleanContentStreams = false; ///< Rewrite content streams (smaller, slower).
     bool garbageCollect = true;       ///< Drop unreachable objects and de-duplicate.
     bool decompressStreams = false;   ///< For debugging a document by hand.
+    /// 0 keeps MuPDF's default. 100 spends more CPU for a smaller file.
+    int compressionEffort = 0;
+    /// Omit the MuPDF version stamp so two saves of the same bytes match.
+    /// Ignored on MuPDF older than 1.28.1, which has no such option.
+    bool reproducible = false;
 
     enum class Encryption {
         Keep,   ///< Leave the document's existing encryption alone.
@@ -170,6 +175,9 @@ public:
     /// `path` is the sibling index at each depth, matching the outline tree.
     bool renameBookmark(const QList<int> &path, const QString &title);
     bool removeBookmark(const QList<int> &path);
+    /// Moves the bookmark one step among its siblings. Negative is toward the
+    /// start of the list. Children move with it. Returns false at the ends.
+    bool moveBookmark(const QList<int> &path, int delta);
 
     /// Page box in points. Cheap: sizes are read once when the document opens.
     QSizeF pageSizePoints(int index) const;
@@ -210,6 +218,16 @@ public:
 
     /// Insets the page's crop box by the given margins, in points. PDF only.
     void cropPage(int index, qreal left, qreal top, qreal right, qreal bottom);
+
+    /// Numbering style for a run of page labels, the printed numbers in the
+    /// page thumbnails of Acrobat. Decimal is "1", roman is "i" / "I".
+    enum class PageLabelStyle { Decimal, RomanUpper, RomanLower, AlphaUpper, AlphaLower };
+
+    /// The label of one page, such as "iii" or "A-4". Empty when unset.
+    QString pageLabel(int index) const;
+    /// Labels from `fromPage` to the next label run (or the end) as
+    /// `prefix` plus a counter that starts at `start`.
+    void setPageLabels(int fromPage, PageLabelStyle style, const QString &prefix, int start);
 
     /// Sets the page's media box and drops any crop box. Size is in points.
     void setPageSize(int index, const QSizeF &sizePoints);
@@ -271,6 +289,14 @@ public:
     QList<EmbeddedFile> embeddedFiles() const;
     /// Bytes of embedded file `index` in the list from embeddedFiles().
     QByteArray embeddedFileContents(int index) const;
+    /// Adds a document-level embedded file. `mimeType` may be empty.
+    bool addEmbeddedFile(const QString &name, const QByteArray &data, const QString &mimeType);
+
+    /// Marks every match as a redaction. The content stays until redactions
+    /// are applied. Throws MuError when a regular expression does not compile.
+    /// Returns how many marks were added.
+    int markMatchingRedactions(const QString &needle, bool matchCase, bool wholeWords,
+                               bool regularExpression);
 
     /// The MuPDF handles. For use inside `core/pdf` only: callers must hold
     /// parseMutex() and must not let these outlive the document.
@@ -298,6 +324,7 @@ private:
     void readInfo();
     void readPermissions();
     void readOutline();
+    bool replaceOutline(const QList<OutlineNode> &nodes);
 
     fz_document *m_document = nullptr;
     pdf_document *m_pdf = nullptr; ///< Same document, PDF interface, or null.

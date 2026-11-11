@@ -13,7 +13,27 @@ Everything below is in `main` and will go out with the first tagged release.
 
 ### Added
 
-- **MuPDF 1.28** — SweetPDF builds against MuPDF 1.28.5 when `scripts/build-mupdf.sh`
+- **MuPDF 1.28.6** — `scripts/build-mupdf.sh` now builds MuPDF 1.28.6 (previously 1.28.5).
+  The upstream change in 1.28.6 is the vendored Brotli 1.2.1. The script still
+  links system libraries, so that Brotli bump applies when MuPDF is built
+  without `USE_SYSTEM_LIBS`. The same script now installs `libmupdf-pkcs7` and
+  the OpenSSL helper headers, which certificate signing links when OpenSSL is
+  present. Saves can ask MuPDF 1.28.1+ for a reproducible file id, and compress
+  uses the highest compression effort.
+- **Certificate signatures** — Protect → Certificate signs the current page with
+  a PKCS#12 file. The forms panel names the signer and treats a matching
+  self-signed certificate as signed rather than simply invalid. Builds that
+  only have a distribution MuPDF, without the PKCS#7 helper, keep the previous
+  behaviour and say so.
+- **Search and redact** — the find bar and Protect → Redact Matches mark every
+  hit, then Apply Redactions removes the text.
+- **Bookmarks** — Move up and Move down reorder an entry among its siblings and
+  take its children along. The move is one undo step.
+- **Attachments** — a file can be embedded from the Files panel, not only saved
+  out.
+- **Page labels** — Page → Labels sets the printed numbering (1, i, A, plus a
+  prefix) from a chosen page.
+- **MuPDF 1.28** — SweetPDF builds against MuPDF 1.28.6 when `scripts/build-mupdf.sh`
   has installed it, and still compiles with the 1.27 packages distributions
   ship. Opening a file now includes Markdown, HTML, plain text and FictionBook.
   Text extraction turns on MuPDF's dehyphenation and accurate glyph boxes.
@@ -23,7 +43,7 @@ Everything below is in `main` and will go out with the first tagged release.
   MuPDF's search matcher, including case-insensitive patterns.
 - **Signatures** — signed form fields are checked with MuPDF and reported as
   valid, invalid, or out of date after unsaved changes. Creating a PKCS#7
-  signature is still not implemented.
+  signature is described above.
 - **Files and layers** — the sidebar lists embedded files, including file
   attachments that live on a page, and can save one out. Optional-content
   layers can be shown or hidden, and a document's named layer presets can be
@@ -71,7 +91,9 @@ Everything below is in `main` and will go out with the first tagged release.
 ### Known limitations
 
 - Editing existing text replaces it rather than re-flowing the original runs
-  with their fonts.
-- Cryptographic (PKCS#7) signature signing is not implemented. Validation of
-  an existing signature field is.
+  with their fonts. Search-and-redact removes matched glyphs; it does not
+  rewrite the surrounding line.
+- Cryptographic signatures need the MuPDF PKCS#7 helper from
+  `scripts/build-mupdf.sh`. A distribution package of MuPDF can still validate
+  a signature it understands, but it cannot create one.
 - macOS builds are not produced by CI yet; build from source in the meantime.

@@ -73,6 +73,10 @@ public Q_SLOTS:
     void deleteCurrentPages();
     void extractPages(const QList<int> &pages);
     void saveEmbeddedFile(int index);
+    void attachFile();
+    void setPageLabels();
+    void redactSearchHits();
+    void signWithCertificate();
     void mergeDocuments();
     void splitDocument();
     void reversePages();

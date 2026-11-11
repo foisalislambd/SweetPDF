@@ -11,3 +11,13 @@
 #else
 #define SWEETPDF_MUPDF_1_28 0
 #endif
+
+// `pdf_write_options.reproducible` arrived in 1.28.1. 1.28.0 and the 1.27
+// packages distributions still ship do not have the field.
+#if FZ_VERSION_MAJOR > 1 \
+    || (FZ_VERSION_MAJOR == 1 && FZ_VERSION_MINOR > 28) \
+    || (FZ_VERSION_MAJOR == 1 && FZ_VERSION_MINOR == 28 && FZ_VERSION_PATCH >= 1)
+#define SWEETPDF_MUPDF_REPRODUCIBLE 1
+#else
+#define SWEETPDF_MUPDF_REPRODUCIBLE 0
+#endif

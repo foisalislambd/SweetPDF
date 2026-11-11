@@ -100,6 +100,8 @@ Sidebar::Sidebar(QWidget *parent)
     m_stack->addWidget(m_layers);
     connect(m_attachments, &AttachmentsPanel::saveRequested, this,
             &Sidebar::saveAttachmentRequested);
+    connect(m_attachments, &AttachmentsPanel::addRequested, this,
+            &Sidebar::addAttachmentRequested);
     connect(m_attachments, &AttachmentsPanel::statusMessage, this, &Sidebar::statusMessage);
 
     addRailButton(Panel::Pages, QStringLiteral("pages"), tr("Pages"));
@@ -119,7 +121,7 @@ Sidebar::Sidebar(QWidget *parent)
         setPanelVisible(true);
     });
 
-    connect(&Theme::instance(), &Theme::changed, this, [this, collapse] {
+    connect(&Theme::instance(), &Theme::changed, this, [collapse] {
         collapse->setIcon(icon(QStringLiteral("chevron-left")));
     });
 

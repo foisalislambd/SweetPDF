@@ -3,6 +3,8 @@
 #include "core/pdf/MuContext.h"
 #include "core/util/Logging.h"
 
+#include <QDateTime>
+
 #include <cstring>
 
 namespace sweet::core {
@@ -192,6 +194,84 @@ QByteArray PdfDocument::embeddedFileContents(int index) const
         fz_free(ctx, copy);
     }
     return bytes;
+}
+
+bool PdfDocument::addEmbeddedFile(const QString &name, const QByteArray &data, const QString &mimeType)
+{
+    if (!m_pdf || name.trimmed().isEmpty() || data.isEmpty())
+        return false;
+
+    ensureStructure();
+    fz_context *ctx = MuContext::forThread();
+    const QByteArray fileName = name.trimmed().toUtf8();
+    const QByteArray mime = (mimeType.trimmed().isEmpty() ? QStringLiteral("application/octet-stream")
+                                                          : mimeType.trimmed())
+                                .toUtf8();
+    const int64_t now = QDateTime::currentSecsSinceEpoch();
+    bool added = false;
+
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_buffer *buffer = nullptr;
+        fz_var(buffer);
+        fz_var(added);
+        fz_try(ctx) {
+            buffer = fz_new_buffer_from_copied_data(
+                ctx, reinterpret_cast<const unsigned char *>(data.constData()), size_t(data.size()));
+            // The checksum lets a reader notice a truncated attachment. The
+            // returned filespec is not yet in the name tree, so a panel that
+            // only walks EmbeddedFiles would not see it.
+            pdf_obj *spec = pdf_add_embedded_file(ctx, m_pdf, fileName.constData(), mime.constData(),
+                                                  buffer, now, now, 1);
+            pdf_obj *root = pdf_dict_get(ctx, pdf_trailer(ctx, m_pdf), PDF_NAME(Root));
+            pdf_obj *names = pdf_dict_get(ctx, root, PDF_NAME(Names));
+            if (!names) {
+                names = pdf_new_dict(ctx, m_pdf, 1);
+                pdf_dict_put_drop(ctx, root, PDF_NAME(Names), names);
+            }
+            pdf_obj *tree = pdf_dict_get(ctx, names, PDF_NAME(EmbeddedFiles));
+            if (!tree) {
+                tree = pdf_new_dict(ctx, m_pdf, 1);
+                pdf_dict_put_drop(ctx, names, PDF_NAME(EmbeddedFiles), tree);
+            }
+            pdf_obj *leaf = tree;
+            while (pdf_is_array(ctx, pdf_dict_get(ctx, leaf, PDF_NAME(Kids)))) {
+                pdf_obj *kids = pdf_dict_get(ctx, leaf, PDF_NAME(Kids));
+                const int count = pdf_array_len(ctx, kids);
+                if (count <= 0)
+                    break;
+                leaf = pdf_array_get(ctx, kids, count - 1);
+            }
+            pdf_obj *entries = pdf_dict_get(ctx, leaf, PDF_NAME(Names));
+            if (!entries) {
+                entries = pdf_new_array(ctx, m_pdf, 2);
+                pdf_dict_put_drop(ctx, leaf, PDF_NAME(Names), entries);
+            }
+            int at = pdf_array_len(ctx, entries);
+            for (int index = 0; index + 1 < at; index += 2) {
+                const char *existing = pdf_to_text_string(ctx, pdf_array_get(ctx, entries, index));
+                if (std::strcmp(fileName.constData(), existing ? existing : "") < 0) {
+                    at = index;
+                    break;
+                }
+            }
+            pdf_array_insert_drop(ctx, entries, pdf_new_text_string(ctx, fileName.constData()), at);
+            pdf_array_insert(ctx, entries, spec, at + 1);
+            pdf_drop_obj(ctx, spec);
+            added = true;
+        }
+        fz_always(ctx)
+            fz_drop_buffer(ctx, buffer);
+        fz_catch(ctx) {
+            qCWarning(lcPdf) << "Could not embed" << name << ":" << MuContext::lastError(ctx);
+            return false;
+        }
+    }
+
+    if (!added)
+        return false;
+    markEdited();
+    return true;
 }
 
 } // namespace sweet::core

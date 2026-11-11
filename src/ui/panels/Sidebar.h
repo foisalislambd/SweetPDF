@@ -60,6 +60,7 @@ Q_SIGNALS:
     void extractRequested(const QList<int> &pages);
     void insertFileRequested(int atPage);
     void saveAttachmentRequested(int index);
+    void addAttachmentRequested();
     void statusMessage(const QString &message);
 
 private:

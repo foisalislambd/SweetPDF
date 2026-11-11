@@ -1,11 +1,16 @@
 #!/bin/sh
-# Builds MuPDF 1.28.5 into mupdf/install so SweetPDF links the current release
+# Builds MuPDF 1.28.6 into mupdf/install so SweetPDF links the current release
 # instead of an older copy from the distribution. Uses the git checkout in
 # mupdf/ when it is already there, and clones it otherwise. That directory is
 # gitignored.
+#
+# 1.28.6's own change is the vendored brotli 1.2.1. This script builds with
+# USE_SYSTEM_LIBS, so the brotli you link is the system one; the pin still
+# matters because it is the release SweetPDF is tested against, and because
+# the PKCS#7 helper below is taken from that tree.
 set -eu
 
-version=1.28.5
+version=1.28.6
 root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 repo="$root/mupdf"
 src="$repo/release-${version}"
@@ -31,7 +36,18 @@ fi
 
 echo "Building MuPDF ${version}..."
 # System codecs, so the static archive does not ship its own libjpeg and fight
-# the copy Leptonica was built against.
+# the copy Leptonica was built against. libcrypto must be visible to pkg-config
+# or the PKCS#7 helper is compiled as a stub that refuses to sign.
 make -C "$src" -j"$jobs" build=release USE_SYSTEM_LIBS=yes libs
+make -C "$src" -j"$jobs" build=release USE_SYSTEM_LIBS=yes build/release/libmupdf-pkcs7.a
 make -C "$src" build=release USE_SYSTEM_LIBS=yes prefix="$prefix" install-libs
+
+# install-libs does not ship the OpenSSL signature helper. Certificate signing
+# links this archive plus the headers under include/mupdf/helpers.
+pkcs7="$src/build/release/libmupdf-pkcs7.a"
+if [ -f "$pkcs7" ]; then
+    mkdir -p "$prefix/lib" "$prefix/include/mupdf/helpers"
+    cp "$pkcs7" "$prefix/lib/libmupdf-pkcs7.a"
+    cp "$src/include/mupdf/helpers/"*.h "$prefix/include/mupdf/helpers/"
+fi
 echo "Installed MuPDF ${version} to ${prefix}"

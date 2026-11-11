@@ -34,9 +34,13 @@ qt_add_library(sweetpdf_core STATIC
 
 target_include_directories(sweetpdf_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 
+# MuPDF is public because the headers in pdf/ include fitz.h, and the UI
+# includes those headers. A MuPDF that is not on the default system include
+# path (the one scripts/build-mupdf.sh installs) would otherwise be invisible
+# to every target that only links sweetpdf_core.
 target_link_libraries(sweetpdf_core
-    PUBLIC  Qt6::Core Qt6::Gui
-    PRIVATE Qt6::Concurrent MuPDF::MuPDF sweetpdf_warnings
+    PUBLIC  Qt6::Core Qt6::Gui MuPDF::MuPDF
+    PRIVATE Qt6::Concurrent sweetpdf_warnings
 )
 
 if(SWEETPDF_ENABLE_OCR)

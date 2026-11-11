@@ -7,6 +7,7 @@
 #include "core/session/EditCommands.h"
 #include "core/util/Logging.h"
 
+#include <QFile>
 #include <QFileInfo>
 
 namespace sweet::core {
@@ -737,6 +738,125 @@ bool DocumentSession::removeBookmark(const QList<int> &path)
         return false;
     setModified(true);
     Q_EMIT outlineChanged();
+    return true;
+}
+
+bool DocumentSession::moveBookmark(const QList<int> &path, int delta)
+{
+    if (!m_document || !m_document->isPdf())
+        return false;
+    const bool moved = applyStructuralEdit(
+        tr("Move bookmark"),
+        [=](PdfDocument &document) {
+            if (!document.moveBookmark(path, delta))
+                throw MuError(tr("That bookmark cannot move any further."));
+        },
+        nullptr);
+    if (moved)
+        Q_EMIT outlineChanged();
+    return moved;
+}
+
+bool DocumentSession::addEmbeddedFile(const QString &name, const QByteArray &data,
+                                      const QString &mimeType)
+{
+    if (!m_document || !m_document->isPdf())
+        return false;
+    return applyStructuralEdit(
+        tr("Attach file"),
+        [=](PdfDocument &document) {
+            if (!document.addEmbeddedFile(name, data, mimeType))
+                throw MuError(tr("Could not attach %1.").arg(name));
+        },
+        nullptr);
+}
+
+bool DocumentSession::setPageLabels(int fromPage, PdfDocument::PageLabelStyle style,
+                                    const QString &prefix, int start)
+{
+    if (!m_document || !m_document->isPdf())
+        return false;
+    return applyStructuralEdit(
+        tr("Page labels"),
+        [=](PdfDocument &document) { document.setPageLabels(fromPage, style, prefix, start); },
+        nullptr);
+}
+
+int DocumentSession::markMatchingRedactions(const QString &needle, bool matchCase, bool wholeWords,
+                                            bool regularExpression, QString *errorMessage)
+{
+    if (!m_document || !m_document->isPdf() || needle.isEmpty())
+        return 0;
+    int marked = 0;
+    const bool ok = applyStructuralEdit(
+        tr("Mark redactions"),
+        [&](PdfDocument &document) {
+            marked = document.markMatchingRedactions(needle, matchCase, wholeWords,
+                                                     regularExpression);
+            if (marked == 0)
+                throw MuError(tr("No matches for “%1”.").arg(needle));
+        },
+        errorMessage);
+    if (ok)
+        Q_EMIT annotationsChanged(-1);
+    return ok ? marked : 0;
+}
+
+bool DocumentSession::signWithCertificate(const forms::CertificateSignRequest &request,
+                                          QString *errorMessage)
+{
+    if (!m_document || !m_document->isPdf()) {
+        if (errorMessage)
+            *errorMessage = tr("This file format can be viewed but not edited.");
+        return false;
+    }
+    if (m_filePath.isEmpty()) {
+        if (errorMessage)
+            *errorMessage = tr("Save the document before signing it.");
+        return false;
+    }
+
+    // The signature is computed over the bytes on disk, so pending edits have
+    // to be written first. A full save here is what those edits become.
+    try {
+        SaveOptions options;
+        options.incremental = false;
+        m_document->saveToFile(m_filePath, options);
+    } catch (const MuError &failure) {
+        if (errorMessage)
+            *errorMessage = failure.details();
+        return false;
+    }
+
+    forms::CertificateSignRequest onDisk = request;
+    onDisk.pdfPath = m_filePath;
+
+    QFile beforeFile(m_filePath);
+    if (!beforeFile.open(QIODevice::ReadOnly)) {
+        if (errorMessage)
+            *errorMessage = tr("Could not read the saved document.");
+        return false;
+    }
+    const QByteArray before = beforeFile.readAll();
+    beforeFile.close();
+
+    if (!forms::signWithCertificate(onDisk, errorMessage))
+        return false;
+
+    QFile afterFile(m_filePath);
+    if (!afterFile.open(QIODevice::ReadOnly)) {
+        if (errorMessage)
+            *errorMessage = tr("The document was signed, but it could not be reloaded.");
+        return false;
+    }
+    QByteArray after = afterFile.readAll();
+    afterFile.close();
+
+    restoreDocumentBytes(after);
+    m_undoStack->push(new StructuralEditCommand(this, before, std::move(after),
+                                                tr("Sign with certificate")));
+    setModified(true);
+    Q_EMIT formsChanged(-1);
     return true;
 }
 

@@ -3,6 +3,7 @@
 #include "core/pdf/Geometry.h"
 #include "core/pdf/MuContext.h"
 #include "core/pdf/MuVersion.h"
+#include "core/pdf/PdfAnnotations.h"
 #include "core/util/Logging.h"
 
 #include <QFile>
@@ -338,6 +339,12 @@ pdf_write_options toWriteOptions(const SaveOptions &options)
     // An incremental save must leave existing objects, including appearances, alone.
     write.do_use_objstms = (options.garbageCollect && !options.incremental) ? 1 : 0;
     write.do_appearance = options.incremental ? 0 : 1;
+    write.compression_effort = options.compressionEffort;
+#if SWEETPDF_MUPDF_REPRODUCIBLE
+    // Keeps the producer string and file id stable, which is what makes two
+    // compressions of the same document byte-identical.
+    write.reproducible = options.reproducible ? 1 : 0;
+#endif
 
     switch (options.encryption) {
     case SaveOptions::Encryption::Keep:
@@ -1396,6 +1403,211 @@ bool PdfDocument::removeBookmark(const QList<int> &path)
     markEdited();
     readOutline();
     return true;
+}
+
+namespace {
+
+/// Writes `nodes` at the iterator's current level. The iterator is left just
+/// after the last node, which is where the next sibling insert appends.
+void writeOutlineLevel(fz_context *ctx, fz_document *document, fz_outline_iterator *iter,
+                       const QList<OutlineNode> &nodes)
+{
+    // Called from inside fz_try. Strings are MuPDF-owned copies so a later
+    // longjmp does not skip a QByteArray destructor. Insert copies them.
+    for (const OutlineNode &node : nodes) {
+        char *title = fz_strdup(ctx, node.title.toUtf8().constData());
+        char *uri = nullptr;
+        if (!node.uri.isEmpty())
+            uri = fz_strdup(ctx, node.uri.toUtf8().constData());
+        else if (node.pageIndex >= 0) {
+            const fz_link_dest dest = fz_make_link_dest_xyz(
+                0, node.pageIndex, float(node.pageOffset.x()), float(node.pageOffset.y()), 0);
+            uri = fz_format_link_uri(ctx, document, dest);
+        }
+
+        fz_outline_item item{};
+        item.title = title;
+        item.uri = uri;
+        item.is_open = node.openByDefault ? 1 : 0;
+        if (node.bold)
+            item.flags |= FZ_OUTLINE_FLAG_BOLD;
+        if (node.italic)
+            item.flags |= FZ_OUTLINE_FLAG_ITALIC;
+        // MuPDF stores these as 0–255 and skips the color array when all are 0,
+        // which is how an entry with no color of its own is written.
+        if (node.color.isValid()) {
+            item.r = float(node.color.red());
+            item.g = float(node.color.green());
+            item.b = float(node.color.blue());
+        }
+
+        fz_outline_iterator_insert(ctx, iter, &item);
+        fz_free(ctx, title);
+        fz_free(ctx, uri);
+        // Insert leaves the iterator in "after this item". Step back onto it
+        // so children can be written underneath, then step past it again.
+        fz_outline_iterator_prev(ctx, iter);
+        if (!node.children.isEmpty() && fz_outline_iterator_down(ctx, iter) >= 0) {
+            writeOutlineLevel(ctx, document, iter, node.children);
+            fz_outline_iterator_up(ctx, iter);
+        }
+        fz_outline_iterator_next(ctx, iter);
+    }
+}
+
+} // namespace
+
+bool PdfDocument::replaceOutline(const QList<OutlineNode> &nodes)
+{
+    if (!m_pdf)
+        return false;
+
+    ensureStructure();
+    fz_context *ctx = MuContext::forThread();
+    bool replaced = false;
+
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_outline_iterator *iter = nullptr;
+        fz_var(iter);
+        fz_var(replaced);
+        fz_try(ctx) {
+            iter = fz_new_outline_iterator(ctx, m_document);
+            if (!iter)
+                fz_throw(ctx, FZ_ERROR_GENERIC, "no outline iterator");
+            // Climb to the top and walk back to the first sibling, then delete
+            // until the level is empty. Deleting the last item parks the
+            // iterator where an insert creates the first entry.
+            while (fz_outline_iterator_up(ctx, iter) == 0) {
+            }
+            while (fz_outline_iterator_prev(ctx, iter) == 0) {
+            }
+            while (fz_outline_iterator_item(ctx, iter))
+                fz_outline_iterator_delete(ctx, iter);
+            writeOutlineLevel(ctx, m_document, iter, nodes);
+            replaced = true;
+        }
+        fz_always(ctx)
+            fz_drop_outline_iterator(ctx, iter);
+        fz_catch(ctx) {
+            qCWarning(lcPdf) << "Could not rewrite bookmarks:" << MuContext::lastError(ctx);
+            return false;
+        }
+    }
+
+    if (!replaced)
+        return false;
+    markEdited();
+    readOutline();
+    return true;
+}
+
+bool PdfDocument::moveBookmark(const QList<int> &path, int delta)
+{
+    if (!m_pdf || path.isEmpty() || delta == 0)
+        return false;
+
+    QList<OutlineNode> tree = m_outline;
+    QList<OutlineNode> *siblings = &tree;
+    for (int depth = 0; depth < path.size() - 1; ++depth) {
+        const int index = path.at(depth);
+        if (index < 0 || index >= siblings->size())
+            return false;
+        siblings = &(*siblings)[index].children;
+    }
+    const int index = path.last();
+    const int target = index + delta;
+    if (index < 0 || target < 0 || index >= siblings->size() || target >= siblings->size())
+        return false;
+    siblings->swapItemsAt(index, target);
+    return replaceOutline(tree);
+}
+
+QString PdfDocument::pageLabel(int index) const
+{
+    if (!m_pdf || index < 0 || index >= m_pageCount)
+        return {};
+
+    fz_context *ctx = MuContext::forThread();
+    const std::lock_guard<std::mutex> guard(m_parseMutex);
+    char buffer[128] = { 0 };
+    fz_try(ctx)
+        pdf_page_label(ctx, m_pdf, index, buffer, sizeof(buffer));
+    fz_catch(ctx)
+        buffer[0] = '\0';
+    return QString::fromUtf8(buffer);
+}
+
+void PdfDocument::setPageLabels(int fromPage, PageLabelStyle style, const QString &prefix, int start)
+{
+    pdf_document *pdf = requirePdf();
+    if (fromPage < 0 || fromPage >= m_pageCount || start < 1)
+        throw MuError(QStringLiteral("Page labels need a page in the document and a start of at least 1."));
+
+    pdf_page_label_style muStyle = PDF_PAGE_LABEL_DECIMAL;
+    switch (style) {
+    case PageLabelStyle::Decimal:
+        muStyle = PDF_PAGE_LABEL_DECIMAL;
+        break;
+    case PageLabelStyle::RomanUpper:
+        muStyle = PDF_PAGE_LABEL_ROMAN_UC;
+        break;
+    case PageLabelStyle::RomanLower:
+        muStyle = PDF_PAGE_LABEL_ROMAN_LC;
+        break;
+    case PageLabelStyle::AlphaUpper:
+        muStyle = PDF_PAGE_LABEL_ALPHA_UC;
+        break;
+    case PageLabelStyle::AlphaLower:
+        muStyle = PDF_PAGE_LABEL_ALPHA_LC;
+        break;
+    }
+
+    fz_context *ctx = MuContext::forThread();
+    const QByteArray prefixUtf8 = prefix.toUtf8();
+    {
+        const std::lock_guard<std::mutex> guard(m_parseMutex);
+        fz_try(ctx)
+            pdf_set_page_labels(ctx, pdf, fromPage, muStyle, prefixUtf8.constData(), start);
+        fz_catch(ctx)
+            MuContext::raise(ctx, QStringLiteral("Could not set page labels"));
+    }
+    markEdited();
+}
+
+int PdfDocument::markMatchingRedactions(const QString &needle, bool matchCase, bool wholeWords,
+                                        bool regularExpression)
+{
+    if (!m_pdf || needle.isEmpty())
+        return 0;
+
+    ensureStructure();
+    int marked = 0;
+    for (int index = 0; index < m_pageCount; ++index) {
+        const std::shared_ptr<PdfPage> loaded = page(index);
+        if (!loaded)
+            continue;
+        const std::shared_ptr<const PageText> text = loaded->textLayer();
+        PdfPage::FindOptions options;
+        options.matchCase = matchCase;
+        options.wholeWords = wholeWords && !regularExpression;
+        options.regularExpression = regularExpression;
+        const PdfPage::FindResult found = loaded->findText(needle, options);
+        if (!found.error.isEmpty())
+            throw MuError(found.error);
+        for (const TextRange &range : found.ranges) {
+            if (!text)
+                break;
+            AnnotationSpec spec;
+            spec.type = AnnotationType::Redact;
+            spec.pageIndex = index;
+            spec.quads = text->boxes(range);
+            spec.color = QColor(0, 0, 0);
+            if (annotations::add(*this, spec) != 0)
+                ++marked;
+        }
+    }
+    return marked;
 }
 
 void PdfDocument::refreshStructure()

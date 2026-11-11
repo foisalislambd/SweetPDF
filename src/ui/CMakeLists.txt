@@ -24,6 +24,7 @@ qt_add_library(sweetpdf_ui STATIC
     dialogs/CompareDialog.h       dialogs/CompareDialog.cpp
     dialogs/OcrDialog.h           dialogs/OcrDialog.cpp
     dialogs/SignatureDialog.h     dialogs/SignatureDialog.cpp
+    dialogs/CertificateDialog.h   dialogs/CertificateDialog.cpp
     dialogs/PreferencesDialog.h   dialogs/PreferencesDialog.cpp
 
     # panels/ - docked navigators and inspectors.

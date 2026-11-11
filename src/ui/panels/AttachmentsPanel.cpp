@@ -4,6 +4,7 @@
 #include "core/session/DocumentSession.h"
 #include "ui/theme/Theme.h"
 
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
 #include <QLocale>
@@ -35,7 +36,12 @@ AttachmentsPanel::AttachmentsPanel(QWidget *parent)
     m_files->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     pageLayout->addWidget(m_files, 1);
 
-    auto *save = new QPushButton(tr("Save selected file…"), page);
+    auto *buttons = new QHBoxLayout;
+    buttons->setContentsMargins(8, 4, 8, 8);
+    auto *add = new QPushButton(tr("Attach…"), page);
+    add->setIcon(icon(QStringLiteral("attachment")));
+    connect(add, &QPushButton::clicked, this, &AttachmentsPanel::addRequested);
+    auto *save = new QPushButton(tr("Save…"), page);
     save->setIcon(icon(QStringLiteral("attachment")));
     connect(save, &QPushButton::clicked, this, [this] {
         const int row = m_files->currentRow();
@@ -45,7 +51,9 @@ AttachmentsPanel::AttachmentsPanel(QWidget *parent)
         }
         Q_EMIT saveRequested(row);
     });
-    pageLayout->addWidget(save);
+    buttons->addWidget(add);
+    buttons->addWidget(save);
+    pageLayout->addLayout(buttons);
     m_stack->addWidget(page);
 
     auto *empty = new QWidget(this);
@@ -66,13 +74,17 @@ AttachmentsPanel::AttachmentsPanel(QWidget *parent)
     heading->setAlignment(Qt::AlignCenter);
     emptyLayout->addWidget(heading);
 
-    auto *hint = new QLabel(tr("Files embedded in the PDF are listed here. Select one and "
-                               "save it to disk."),
+    auto *hint = new QLabel(tr("Files embedded in the PDF are listed here. Attach one, or "
+                               "select one and save it to disk."),
                             empty);
     hint->setObjectName(QStringLiteral("SectionLabel"));
     hint->setAlignment(Qt::AlignCenter);
     hint->setWordWrap(true);
     emptyLayout->addWidget(hint);
+    auto *attach = new QPushButton(tr("Attach a file…"), empty);
+    attach->setIcon(icon(QStringLiteral("attachment")));
+    connect(attach, &QPushButton::clicked, this, &AttachmentsPanel::addRequested);
+    emptyLayout->addWidget(attach, 0, Qt::AlignHCenter);
     emptyLayout->addStretch(2);
     m_stack->addWidget(empty);
 
