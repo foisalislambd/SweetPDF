@@ -117,10 +117,11 @@ jobs:
         run: |
           gdb --batch --nx \
             -ex 'set confirm off' \
+            -ex 'set pagination off' \
             -ex run \
             -ex 'echo \n--- backtrace ---\n' \
-            -ex 'thread apply all backtrace full' \
-            --args ./build/bin/sweetpdf_smoke.exe build/tests/sample.pdf || true
+            -ex 'thread apply all backtrace' \
+            --args ./build/bin/sweetpdf_edit_test.exe build/tests/sample.pdf || true
 
       - name: Package for Linux
         if: inputs.package && runner.os == 'Linux'

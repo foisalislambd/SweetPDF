@@ -81,6 +81,10 @@ AnnotationSpec inkSpec(int pageIndex)
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
+    // Section names have to survive a crash. CTest only keeps stdout when the
+    // process exits, and a segfault drops a block-buffered buffer.
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    std::setvbuf(stderr, nullptr, _IONBF, 0);
     const QStringList arguments = QCoreApplication::arguments();
     if (arguments.size() < 2) {
         std::fprintf(stderr, "usage: sweetpdf_edit_test <document> [workdir]\n");

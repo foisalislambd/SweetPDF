@@ -49,6 +49,18 @@ if(MuPDF_FOUND AND NOT TARGET MuPDF::MuPDF)
         INTERFACE_INCLUDE_DIRECTORIES "${MuPDF_INCLUDE_DIR}"
     )
 
+    # MSYS2 ships both libmupdf.dll and libmupdf.a. CMake picks the import
+    # library. pdf_default_write_options and the other FZ_DATA symbols are
+    # real data in the DLL. Without dllimport, a struct copy reads the import
+    # thunk (a pointer plus whatever follows it in the exe) and a later save
+    # writes a file whose encryption strings do not decrypt. Opening that file
+    # warns "aes padding out of range" and then crashes. MuPDF's own header
+    # turns FZ_DATA into dllimport when FZ_DLL_CLIENT is set.
+    if(WIN32 AND MuPDF_LIBRARY MATCHES "\\.[Dd][Ll][Ll]\\.[Aa]$")
+        set_property(TARGET MuPDF::MuPDF APPEND PROPERTY
+            INTERFACE_COMPILE_DEFINITIONS FZ_DLL_CLIENT)
+    endif()
+
     set(_mupdf_link_libs "")
     if(MuPDF_THIRD_LIBRARY)
         list(APPEND _mupdf_link_libs "${MuPDF_THIRD_LIBRARY}")
