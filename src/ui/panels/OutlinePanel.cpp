@@ -85,11 +85,17 @@ OutlinePanel::OutlinePanel(QWidget *parent)
         m_tree->setCurrentItem(item);
         QMenu menu(this);
         QAction *child = menu.addAction(tr("Add sub-bookmark"));
+        QAction *up = menu.addAction(tr("Move up"));
+        QAction *down = menu.addAction(tr("Move down"));
         QAction *rename = menu.addAction(tr("Rename"));
         QAction *remove = menu.addAction(tr("Delete"));
         QAction *chosen = menu.exec(m_tree->viewport()->mapToGlobal(at));
         if (chosen == child)
             addChildBookmark();
+        else if (chosen == up)
+            moveBookmark(-1);
+        else if (chosen == down)
+            moveBookmark(1);
         else if (chosen == rename)
             renameBookmark();
         else if (chosen == remove)
@@ -188,6 +194,16 @@ void OutlinePanel::removeBookmark()
     if (!item)
         return;
     m_session->removeBookmark(pathOf(item));
+}
+
+void OutlinePanel::moveBookmark(int delta)
+{
+    if (!m_session || !m_session->isLoaded() || !m_session->document()->isPdf())
+        return;
+    QTreeWidgetItem *item = m_tree->currentItem();
+    if (!item)
+        return;
+    m_session->moveBookmark(pathOf(item), delta);
 }
 
 void OutlinePanel::appendNodes(QTreeWidgetItem *parent, const QList<core::OutlineNode> &nodes,

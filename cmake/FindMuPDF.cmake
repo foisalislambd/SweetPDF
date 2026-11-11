@@ -47,6 +47,15 @@ if(MuPDF_FOUND AND NOT TARGET MuPDF::MuPDF)
         INTERFACE_INCLUDE_DIRECTORIES "${MuPDF_INCLUDE_DIR}"
     )
 
+    # MSYS2 ships both libmupdf.dll and libmupdf.a. CMake picks the import
+    # library. pdf_default_write_options lives in the DLL. Without dllimport a
+    # struct copy reads the import thunk, and an encrypted save cannot be
+    # opened again. MuPDF's header turns FZ_DATA into dllimport when this is set.
+    if(WIN32 AND MuPDF_LIBRARY MATCHES "\\.[Dd][Ll][Ll]\\.[Aa]$")
+        set_property(TARGET MuPDF::MuPDF APPEND PROPERTY
+            INTERFACE_COMPILE_DEFINITIONS FZ_DLL_CLIENT)
+    endif()
+
     set(_mupdf_link_libs "")
     if(MuPDF_THIRD_LIBRARY)
         list(APPEND _mupdf_link_libs "${MuPDF_THIRD_LIBRARY}")
@@ -55,7 +64,7 @@ if(MuPDF_FOUND AND NOT TARGET MuPDF::MuPDF)
     # A USE_SYSTEM_LIBS MuPDF build still ships libmupdf-third.a for the pieces
     # it vendors (mujs, lcms) and expects the codecs from the system. Linking
     # them is harmless for a shared libmupdf that already pulls the same
-    # libraries in, and it is required for the static 1.28.5 build.
+    # libraries in, and it is required for the static 1.28 build.
     foreach(_dep freetype harfbuzz jpeg openjp2 jbig2dec z brotlidec brotlienc brotlicommon)
         find_library(_mupdf_dep_${_dep} NAMES ${_dep})
         if(_mupdf_dep_${_dep})

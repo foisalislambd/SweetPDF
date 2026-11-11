@@ -740,6 +740,67 @@ bool DocumentSession::removeBookmark(const QList<int> &path)
     return true;
 }
 
+bool DocumentSession::moveBookmark(const QList<int> &path, int delta)
+{
+    if (!m_document || !m_document->isPdf())
+        return false;
+    const bool moved = applyStructuralEdit(
+        tr("Move bookmark"),
+        [=](PdfDocument &document) {
+            if (!document.moveBookmark(path, delta))
+                throw MuError(tr("That bookmark cannot move any further."));
+        },
+        nullptr);
+    if (moved)
+        Q_EMIT outlineChanged();
+    return moved;
+}
+
+bool DocumentSession::addEmbeddedFile(const QString &name, const QByteArray &data,
+                                      const QString &mimeType)
+{
+    if (!m_document || !m_document->isPdf())
+        return false;
+    return applyStructuralEdit(
+        tr("Attach file"),
+        [=](PdfDocument &document) {
+            if (!document.addEmbeddedFile(name, data, mimeType))
+                throw MuError(tr("Could not attach %1.").arg(name));
+        },
+        nullptr);
+}
+
+bool DocumentSession::setPageLabels(int fromPage, PdfDocument::PageLabelStyle style,
+                                    const QString &prefix, int start)
+{
+    if (!m_document || !m_document->isPdf())
+        return false;
+    return applyStructuralEdit(
+        tr("Page labels"),
+        [=](PdfDocument &document) { document.setPageLabels(fromPage, style, prefix, start); },
+        nullptr);
+}
+
+int DocumentSession::markMatchingRedactions(const QString &needle, bool matchCase, bool wholeWords,
+                                            bool regularExpression, QString *errorMessage)
+{
+    if (!m_document || !m_document->isPdf() || needle.isEmpty())
+        return 0;
+    int marked = 0;
+    const bool ok = applyStructuralEdit(
+        tr("Mark redactions"),
+        [&](PdfDocument &document) {
+            marked = document.markMatchingRedactions(needle, matchCase, wholeWords,
+                                                     regularExpression);
+            if (marked == 0)
+                throw MuError(tr("No matches for “%1”.").arg(needle));
+        },
+        errorMessage);
+    if (ok)
+        Q_EMIT annotationsChanged(-1);
+    return ok ? marked : 0;
+}
+
 void DocumentSession::invalidatePage(int pageIndex)
 {
     if (m_document)

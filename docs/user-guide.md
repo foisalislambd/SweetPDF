@@ -8,7 +8,7 @@ package downloads see the [README install section](../README.md#install).
 
 - Home screen: **Open**, a task tile, or drop a file on the window. PDF, XPS, EPUB,
   CBZ, SVG, Markdown, HTML, plain text and FictionBook all open. Markdown needs
-  MuPDF 1.28 (run `scripts/build-mupdf.sh` when the distribution package is older).
+  MuPDF 1.28 (run `scripts/build-mupdf.sh` for 1.28.6 when the distribution package is older).
 - Ribbon / Menu: **Open** (`Ctrl+O`).
 - Recent list on the home screen: click a path to reopen it.
 
@@ -42,16 +42,23 @@ Colours and opacity live in the right-hand tool options.
 written as a FreeText annotation (not a full re-flow of the original font run).
 
 **Pages** — Insert, delete, extract, duplicate, rotate; drag thumbnails to
-reorder. Merge and split live under Page / Tools. Bookmarks: the Marks panel
-can add the current page, and rename or delete an entry.
+reorder. Merge and split live under Page / Tools.
 
 **Forms** — Forms panel lists fields; fill values in place. Flatten bakes them
 into page content.
 
 **Sign** — Draw, type or import a signature and place it on one page or all.
 
-**Protect** — Encrypt with permissions; mark redactionsations then **Apply**;
-watermarks.
+**Protect** — Encrypt with permissions; mark redactions (or **Redact Matches** /
+the find-bar redact button) then **Apply**; watermarks.
+
+**Bookmarks** — the Marks panel can add the current page, add a child, move an
+entry up or down, and rename or delete it.
+
+**Files** — the Files panel lists embedded files, can attach a new one, and can
+save one out.
+
+**Page labels** — Page → **Labels** sets the printed numbering from a page.
 
 **OCR** — Tools → OCR. Needs Tesseract language data (for example
 `tesseract-ocr-eng` on Debian/Ubuntu).

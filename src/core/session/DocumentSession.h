@@ -196,6 +196,15 @@ public:
     bool addChildBookmark(const QList<int> &parentPath, const QString &title, int pageIndex);
     bool renameBookmark(const QList<int> &path, const QString &title);
     bool removeBookmark(const QList<int> &path);
+    /// One step among siblings. Undoable.
+    bool moveBookmark(const QList<int> &path, int delta);
+
+    bool addEmbeddedFile(const QString &name, const QByteArray &data, const QString &mimeType);
+    bool setPageLabels(int fromPage, PdfDocument::PageLabelStyle style, const QString &prefix,
+                       int start);
+    /// Marks search hits for redaction, as one undo step. Returns how many.
+    int markMatchingRedactions(const QString &needle, bool matchCase, bool wholeWords,
+                               bool regularExpression, QString *errorMessage = nullptr);
 
     // --- Structural edits -------------------------------------------------
 

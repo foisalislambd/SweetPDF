@@ -80,6 +80,10 @@ AnnotationSpec inkSpec(int pageIndex)
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
+    // Section names have to survive a crash. CTest only keeps stdout when the
+    // process exits, and a segfault drops a block-buffered buffer.
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    std::setvbuf(stderr, nullptr, _IONBF, 0);
     const QStringList arguments = QCoreApplication::arguments();
     if (arguments.size() < 2) {
         std::fprintf(stderr, "usage: sweetpdf_edit_test <document> [workdir]\n");
@@ -420,6 +424,62 @@ int main(int argc, char *argv[])
                        "flattening keeps every page");
             checkEqual(annotations::onPage(*flattened, 0).size(), qsizetype(0),
                        "the flattened annotation is no longer interactive");
+        }
+
+        // --- Bookmarks, attachments, labels, search-and-redact ------------
+        std::printf("organise\n");
+        {
+            auto document = PdfDocument::open(source);
+            const int before = document->outline().size();
+            check(document->addBookmark(QStringLiteral("Alpha"), 0), "a bookmark can be added");
+            check(document->addBookmark(QStringLiteral("Beta"), 1), "a second bookmark can be added");
+            check(document->moveBookmark({ before + 1 }, -1), "a bookmark can move up");
+            const QList<OutlineNode> moved = document->outline();
+            check(moved.size() >= before + 2, "both new bookmarks are still there");
+            check(moved.at(before).title == QStringLiteral("Beta"),
+                  "moving up swaps it with the previous bookmark");
+            check(moved.at(before + 1).title == QStringLiteral("Alpha"),
+                  "the displaced bookmark follows it");
+
+            check(document->addEmbeddedFile(QStringLiteral("note.txt"),
+                                            QByteArray("hello sweetpdf"),
+                                            QStringLiteral("text/plain")),
+                  "a file can be embedded");
+
+            document->setPageLabels(0, PdfDocument::PageLabelStyle::Decimal, QStringLiteral("T-"),
+                                    3);
+            check(document->pageLabel(0) == QStringLiteral("T-3"), "the first page label is T-3");
+            check(document->pageLabel(1) == QStringLiteral("T-4"), "numbering continues on the next page");
+
+            const int marked =
+                document->markMatchingRedactions(QStringLiteral("SweetPDF"), false, true, false);
+            check(marked > 0, "search can mark every match for redaction");
+            for (int index = 0; index < document->pageCount(); ++index)
+                document->applyRedactions(index);
+
+            SaveOptions tight;
+            tight.compressionEffort = 100;
+            tight.reproducible = true;
+            tight.cleanContentStreams = true;
+            auto rewritten = PdfDocument::openFromBytes(document->toBytes(tight), QString());
+            bool leftover = false;
+            bool foundNote = false;
+            const QList<EmbeddedFile> files = rewritten->embeddedFiles();
+            for (int index = 0; index < files.size(); ++index) {
+                if (files.at(index).name != QStringLiteral("note.txt"))
+                    continue;
+                foundNote = true;
+                check(rewritten->embeddedFileContents(index) == QByteArray("hello sweetpdf"),
+                      "the attachment keeps its bytes");
+            }
+            check(foundNote, "the attachment survives a save");
+            check(rewritten->pageLabel(0) == QStringLiteral("T-3"), "page labels survive a save");
+            for (int index = 0; index < rewritten->pageCount(); ++index) {
+                if (rewritten->page(index)->text().contains(QStringLiteral("SweetPDF"),
+                                                           Qt::CaseInsensitive))
+                    leftover = true;
+            }
+            check(!leftover, "applying the marks removes the matched word");
         }
     } catch (const std::exception &failure) {
         std::fprintf(stderr, "edit test threw: %s\n", failure.what());

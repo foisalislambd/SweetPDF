@@ -55,7 +55,7 @@ True re-flow of existing font runs is on the roadmap.
 | --- | --- |
 | UI | Qt 6 |
 | Render, text, annotations, redaction | MuPDF (AGPL → project is AGPL) |
-| Structural PDF ops (where used) | QPDF |
+| Page tree, encryption, signatures | MuPDF |
 | OCR | Tesseract + Leptonica |
 | Local prefs / recent | SQLite / QSettings |
 

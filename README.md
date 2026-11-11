@@ -163,15 +163,13 @@ it goes, or apply it to every page.
 - **Freeze it** — *Flatten* on the *Tools* tab turns fields and annotations into
 ordinary page content so nobody can change them.
 
-Cryptographic (PKCS#7) signatures are not implemented yet — see the
-[roadmap](#roadmap).
-
 ### Protect a document
 
 - **Encrypt** — *Protect* tab: AES-128 or AES-256, an open password and an owner
 password, and a tick list of what is still allowed (printing, copying,
 commenting, filling forms, assembling).
-- **Redact** — mark regions with the redaction tool, then *Apply Redactions*.
+- **Redact** — mark regions with the redaction tool, or *Redact Matches* (also
+  the redact button on the find bar) to mark every hit, then *Apply Redactions*.
 The content underneath is removed from the file, not hidden.
 - **Watermark** — text or an image, with rotation, opacity and a page range.
 
@@ -274,7 +272,7 @@ cmake --build build
 ```
 
 Older Ubuntu releases ship MuPDF 1.24, which is missing some of the form and
-link functions used here. For MuPDF 1.28.5 (Markdown, structure repair that
+link functions used here. For MuPDF 1.28.6 (Markdown, structure repair that
 reports what it changed, and the current signature-check API) run
 `./scripts/build-mupdf.sh` before configuring; CMake picks up `mupdf/install`.
 
@@ -365,8 +363,7 @@ undone by restoring the document exactly as it was.
 | Concern                   | Choice                | Reason                                                                                                                                                |
 | ------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | UI                        | Qt 6 Widgets          | A ribbon, dock panels and a canvas with hundreds of items stay fast and feel native; QML would add a runtime and buy little for a dense desktop tool. |
-| Render, text, annotations | MuPDF                 | One C API that covers rasterising, structured text extraction, annotations and redaction, and it is genuinely fast.                                   |
-| Structural operations     | QPDF                  | Merge, split, encrypt, linearise and repair at the object level, which is where MuPDF is weakest. Apache-2.0.                                         |
+| Render, text, annotations | MuPDF                 | One C API that covers rasterising, structured text extraction, annotations, redaction, page trees and encryption. |
 | OCR                       | Tesseract + Leptonica | The only serious open source engine, with per-word bounding boxes for an invisible text layer.                                                        |
 | Local state               | SQLite                | Recent files, per-document session state and annotation drafts.                                                                                       |
 | Build                     | CMake + Ninja         | One build description for all three platforms.                                                                                                        |
@@ -470,8 +467,9 @@ and icon caches on install so the menu entry appears immediately.
 8. **Export** — images, plain text, HTML, printing, compression. *Done.*
 9. **Real text editing** — re-flow existing text runs with their original fonts,
   instead of replacing them with a text box.
-10. **Cryptographic signatures** — validation of existing signature fields is done.
-   Creating a PKCS#7 signature is not.
+10. **Cryptographic signatures** — validation is done. Creating a signature is
+   not: that needs MuPDF's PKCS#7 helper and OpenSSL, which this build does not
+   link.
 11. **Conversion** — Office formats, in and out.
 12. **Attachments and layers** — list embedded files and show or hide optional
    content. *Done.*

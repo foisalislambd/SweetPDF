@@ -24,6 +24,7 @@ public:
 
 Q_SIGNALS:
     void saveRequested(int index);
+    void addRequested();
     void statusMessage(const QString &message);
 
 private:

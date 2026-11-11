@@ -1,11 +1,15 @@
 #!/bin/sh
-# Builds MuPDF 1.28.5 into mupdf/install so SweetPDF links the current release
+# Builds MuPDF 1.28.6 into mupdf/install so SweetPDF links the current release
 # instead of an older copy from the distribution. Uses the git checkout in
 # mupdf/ when it is already there, and clones it otherwise. That directory is
 # gitignored.
+#
+# 1.28.6's own change is the vendored brotli 1.2.1. This script builds with
+# USE_SYSTEM_LIBS, so the brotli you link is the system one. The pin is still
+# the release SweetPDF is tested against.
 set -eu
 
-version=1.28.5
+version=1.28.6
 root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 repo="$root/mupdf"
 src="$repo/release-${version}"

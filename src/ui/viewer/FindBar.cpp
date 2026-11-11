@@ -61,6 +61,8 @@ FindBar::FindBar(core::DocumentSession *session, QWidget *parent)
     m_regexButton = makeToggle(tr("Regular expression"));
     m_regexButton->setText(QStringLiteral(".*"));
     m_regexButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    m_redactButton = makeToggle(tr("Mark every match for redaction"));
+    m_redactButton->setCheckable(false);
     m_previousButton = makeToggle(tr("Previous match (Shift+F3)"));
     m_previousButton->setCheckable(false);
     m_nextButton = makeToggle(tr("Next match (F3)"));
@@ -68,8 +70,8 @@ FindBar::FindBar(core::DocumentSession *session, QWidget *parent)
     m_closeButton = makeToggle(tr("Close (Esc)"));
     m_closeButton->setCheckable(false);
 
-    for (QToolButton *button : { m_caseButton, m_wordsButton, m_regexButton, m_previousButton,
-                                 m_nextButton, m_closeButton }) {
+    for (QToolButton *button : { m_caseButton, m_wordsButton, m_regexButton, m_redactButton,
+                                 m_previousButton, m_nextButton, m_closeButton }) {
         button->setParent(this);
         row->addWidget(button);
     }
@@ -94,6 +96,7 @@ FindBar::FindBar(core::DocumentSession *session, QWidget *parent)
     });
     connect(m_nextButton, &QToolButton::clicked, this, &FindBar::findNext);
     connect(m_previousButton, &QToolButton::clicked, this, &FindBar::findPrevious);
+    connect(m_redactButton, &QToolButton::clicked, this, &FindBar::redactRequested);
     connect(m_closeButton, &QToolButton::clicked, this, &FindBar::dismiss);
 
     // A new document invalidates every hit.
@@ -106,6 +109,7 @@ void FindBar::applyThemeIcons()
 {
     m_caseButton->setIcon(icon(QStringLiteral("case-sensitive")));
     m_wordsButton->setIcon(icon(QStringLiteral("whole-word")));
+    m_redactButton->setIcon(icon(QStringLiteral("redact")));
     m_previousButton->setIcon(icon(QStringLiteral("chevron-up")));
     m_nextButton->setIcon(icon(QStringLiteral("chevron-down")));
     m_closeButton->setIcon(icon(QStringLiteral("close")));
@@ -137,6 +141,26 @@ void FindBar::dismiss()
 int FindBar::matchCount() const
 {
     return int(m_hits.size());
+}
+
+QString FindBar::query() const
+{
+    return m_field->text();
+}
+
+bool FindBar::matchCase() const
+{
+    return m_caseButton->isChecked();
+}
+
+bool FindBar::wholeWords() const
+{
+    return m_wordsButton->isChecked() && !m_regexButton->isChecked();
+}
+
+bool FindBar::regularExpression() const
+{
+    return m_regexButton->isChecked();
 }
 
 void FindBar::restartSearch()

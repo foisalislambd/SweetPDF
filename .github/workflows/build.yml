@@ -61,8 +61,21 @@ jobs:
 
       - name: Install the Linux toolchain and libraries
         if: runner.os == 'Linux'
+        timeout-minutes: 10
         shell: bash
         run: |
+          # Same packages as before. GitHub's Ubuntu runners try
+          # azure.archive.ubuntu.com first, and that host (and archive.ubuntu.com
+          # with it) is stalling, so apt-get sits there until the job limit.
+          # kernel.org carries the same signed archive, including the amd64v3
+          # packages this image asks for.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://mirrors.edge.kernel.org/ubuntu/	priority:1' \
+              | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
+          printf '%s\n' 'Acquire::Retries "2";' 'Acquire::http::Timeout "20";' \
+            'Acquire::https::Timeout "20";' \
+            | sudo tee /etc/apt/apt.conf.d/99-sweetpdf-timeout >/dev/null
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
             build-essential cmake ninja-build pkg-config file \
@@ -117,10 +130,11 @@ jobs:
         run: |
           gdb --batch --nx \
             -ex 'set confirm off' \
+            -ex 'set pagination off' \
             -ex run \
             -ex 'echo \n--- backtrace ---\n' \
-            -ex 'thread apply all backtrace full' \
-            --args ./build/bin/sweetpdf_smoke.exe build/tests/sample.pdf || true
+            -ex 'thread apply all backtrace' \
+            --args ./build/bin/sweetpdf_edit_test.exe build/tests/sample.pdf || true
 
       - name: Package for Linux
         if: inputs.package && runner.os == 'Linux'

@@ -94,7 +94,6 @@ public:
 private:
     fz_display_list *displayList(fz_context *ctx) const;
 
-    fz_document *m_document = nullptr;
     fz_page *m_page = nullptr;
     mutable fz_display_list *m_displayList = nullptr;
     mutable std::shared_ptr<const PageText> m_textLayer;

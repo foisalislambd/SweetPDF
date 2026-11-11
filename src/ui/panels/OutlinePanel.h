@@ -33,6 +33,7 @@ private:
     void addChildBookmark();
     void renameBookmark();
     void removeBookmark();
+    void moveBookmark(int delta);
 
     QTreeWidget *m_tree = nullptr;
     QWidget *m_emptyState = nullptr;

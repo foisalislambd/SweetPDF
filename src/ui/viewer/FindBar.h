@@ -36,6 +36,10 @@ public:
     void dismiss();
 
     int matchCount() const;
+    QString query() const;
+    bool matchCase() const;
+    bool wholeWords() const;
+    bool regularExpression() const;
 
 public Q_SLOTS:
     void findNext();
@@ -49,6 +53,9 @@ Q_SIGNALS:
     void currentMatchChanged(int pageIndex, const sweet::core::TextRange &range);
 
     void dismissed();
+
+    /// The user asked to mark every current hit for redaction.
+    void redactRequested();
 
 protected:
     void keyPressEvent(QKeyEvent *event) override;
@@ -73,6 +80,7 @@ private:
     QToolButton *m_caseButton = nullptr;
     QToolButton *m_wordsButton = nullptr;
     QToolButton *m_regexButton = nullptr;
+    QToolButton *m_redactButton = nullptr;
     QToolButton *m_closeButton = nullptr;
     QLabel *m_status = nullptr;
 
